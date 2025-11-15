@@ -8,8 +8,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import com.symbioza.daymind.state.MainViewModel
 import com.symbioza.daymind.ui.DayMindScreen
@@ -32,10 +35,17 @@ class MainActivity : ComponentActivity() {
             val storagePermissionLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.RequestPermission()
             ) {}
+            val snackbarHostState = remember { SnackbarHostState() }
+            LaunchedEffect(Unit) {
+                viewModel.snackbarFlow.collect { message ->
+                    snackbarHostState.showSnackbar(message)
+                }
+            }
 
             DayMindTheme {
                 DayMindScreen(
                     state = uiState,
+                    snackbarHostState = snackbarHostState,
                     onToggleRecording = {
                         val granted = ContextCompat.checkSelfPermission(
                             this@MainActivity,
@@ -65,7 +75,8 @@ class MainActivity : ComponentActivity() {
                     onShareTranscript = viewModel::shareTranscript,
                     onThresholdChange = viewModel::updateVadThreshold,
                     onAggressivenessChange = viewModel::updateVadAggressiveness,
-                    onNoiseGateChange = viewModel::updateNoiseGate
+                    onNoiseGateChange = viewModel::updateNoiseGate,
+                    onRefreshSummary = { viewModel.refreshSummary(force = true) }
                 )
             }
         }

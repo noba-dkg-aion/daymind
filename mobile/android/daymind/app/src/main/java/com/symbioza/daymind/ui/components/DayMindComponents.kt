@@ -18,6 +18,9 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,23 +36,33 @@ import androidx.compose.ui.unit.sp
 import com.symbioza.daymind.ui.theme.DayMindPalette
 
 @Composable
-fun DMScaffold(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = DayMindPalette.background
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    brush = Brush.verticalGradient(
-                        colors = listOf(DayMindPalette.background, DayMindPalette.backdrop)
+fun DMScaffold(
+    snackbarHostState: SnackbarHostState,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        containerColor = DayMindPalette.background,
+        contentColor = DayMindPalette.textPrimary
+    ) { padding ->
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = DayMindPalette.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(DayMindPalette.background, DayMindPalette.backdrop)
+                        )
                     )
-                )
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            content = content
-        )
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                content = content
+            )
+        }
     }
 }
 

@@ -226,7 +226,7 @@ class RecordingService : Service() {
         )
         val pending = container.chunkRepository.pendingChunks().size
         container.syncStatusStore.markSuccess("Chunk saved locally ($pending pending)")
-        log("Chunk saved locally ($pending pending)")
+        log("Chunk saved locally ($pending pending)", notify = true)
     }
 
     private fun peak(buffer: ShortArray, length: Int): Float {
@@ -241,8 +241,8 @@ class RecordingService : Service() {
         return maxAmplitude / 32768f
     }
 
-    private fun log(message: String) {
-        container.logStore.add(message)
+    private fun log(message: String, notify: Boolean = false) {
+        container.logStore.add(message, notify)
     }
 
     private fun buildNotification(): Notification {

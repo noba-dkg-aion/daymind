@@ -6,6 +6,7 @@ import com.symbioza.daymind.config.ConfigRepository
 import com.symbioza.daymind.data.ChunkRepository
 import com.symbioza.daymind.data.TranscriptStore
 import com.symbioza.daymind.data.LogStore
+import com.symbioza.daymind.data.SummaryRepository
 import com.symbioza.daymind.state.RecordingStateStore
 import com.symbioza.daymind.upload.ArchiveSyncWorker
 import com.symbioza.daymind.upload.SyncStatusStore
@@ -24,6 +25,7 @@ class AppContainer(private val application: Application) {
     val configRepository = ConfigRepository(application)
     val chunkRepository = ChunkRepository(application)
     val transcriptStore = TranscriptStore(application)
+    val summaryRepository = SummaryRepository(configRepository)
     val logStore = LogStore()
     val syncStatusStore = SyncStatusStore()
     val recordingStateStore = RecordingStateStore()

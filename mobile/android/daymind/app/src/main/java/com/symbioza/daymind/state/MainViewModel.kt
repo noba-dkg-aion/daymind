@@ -10,13 +10,17 @@ import com.symbioza.daymind.audio.RecordingService
 import com.symbioza.daymind.config.AudioSettings
 import com.symbioza.daymind.upload.SyncStatus
 import java.io.File
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 data class UiState(
     val isRecording: Boolean = false,
@@ -32,7 +36,12 @@ data class UiState(
     val vadAggressiveness: Int = 2,
     val noiseGate: Float = 0.12f,
     val logEntries: List<String> = emptyList(),
-    val transcripts: List<TranscriptSummary> = emptyList()
+    val transcripts: List<TranscriptSummary> = emptyList(),
+    val summaryDate: String = "",
+    val summaryText: String = "",
+    val summaryUpdatedAt: Long? = null,
+    val summaryError: String? = null,
+    val isSummaryLoading: Boolean = false
 )
 
 data class ChunkSummary(
@@ -45,7 +54,7 @@ data class ChunkSummary(
 private data class BaseUiState(
     val isRecording: Boolean,
     val pendingChunks: Int,
-    val syncStatus: com.symbioza.daymind.upload.SyncStatus,
+    val syncStatus: SyncStatus,
     val latestChunkPath: String?,
     val latestExternalPath: String?
 )
@@ -53,6 +62,8 @@ private data class BaseUiState(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (getApplication() as DayMindApplication).container
     private val audioSettingsFlow = MutableStateFlow(container.configRepository.getAudioSettings())
+    private val summaryState = MutableStateFlow(SummaryUiState(date = currentUtcDate()))
+    val snackbarFlow: SharedFlow<String> = container.logStore.events
 
     private val baseFlow = combine(
         container.recordingStateStore.isRecording,
@@ -72,14 +83,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val transcriptsFlow = container.transcriptStore.entriesFlow
 
+    init {
+        refreshSummary()
+    }
+
     val uiState: StateFlow<UiState> = combine(
         baseFlow,
         container.chunkRepository.chunkList,
         container.chunkPlaybackManager.isPlaying,
         audioSettingsFlow,
         container.logStore.entries,
-        transcriptsFlow
-    ) { base, chunks, isPlaying, audioSettings, logEntries, transcripts ->
+        transcriptsFlow,
+        summaryState
+    ) { base, chunks, isPlaying, audioSettings, logEntries, transcripts, summary ->
         UiState(
             isRecording = base.isRecording,
             pendingChunks = base.pendingChunks,
@@ -106,15 +122,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     id = it.id,
                     timestamp = it.timestamp,
                     summary = it.summary,
+                    fullText = it.fullText,
                     chunkId = it.chunkId,
                     srtPath = it.srtPath
                 )
-            }
+            },
+            summaryDate = summary.date,
+            summaryText = summary.text,
+            summaryUpdatedAt = summary.updatedAt,
+            summaryError = summary.error,
+            isSummaryLoading = summary.isLoading
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = UiState()
+        initialValue = UiState(
+            summaryDate = summaryState.value.date,
+            summaryText = summaryState.value.text,
+            summaryUpdatedAt = summaryState.value.updatedAt,
+            summaryError = summaryState.value.error,
+            isSummaryLoading = summaryState.value.isLoading
+        )
     )
 
     fun toggleRecording() {
@@ -157,7 +185,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share DayMind archive")
         )
-        log("Shared archive ${file.name}")
+        log("Shared archive ${file.name}", notify = true)
     }
 
     fun shareLastChunk() {
@@ -178,7 +206,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share latest chunk")
         )
-        log("Shared latest chunk")
+        log("Shared latest chunk", notify = true)
     }
 
     fun shareChunk(summary: ChunkSummary) {
@@ -198,7 +226,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share chunk")
         )
-        log("Shared chunk ${summary.id.take(6)}")
+        log("Shared chunk ${summary.id.take(6)}", notify = true)
     }
 
     fun shareTranscript(summary: TranscriptSummary) {
@@ -219,7 +247,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share transcript")
         )
-        log("Shared transcript ${summary.id.take(6)}")
+        log("Shared transcript ${summary.id.take(6)}", notify = true)
+    }
+
+    fun refreshSummary(force: Boolean = false) {
+        if (summaryState.value.isLoading) return
+        viewModelScope.launch {
+            summaryState.update { it.copy(isLoading = true, error = null) }
+            val result = runCatching {
+                container.summaryRepository.fetchSummary(summaryState.value.date, force)
+            }
+            result.onSuccess { payload ->
+                summaryState.update {
+                    it.copy(
+                        date = payload.date,
+                        text = payload.markdown,
+                        updatedAt = System.currentTimeMillis(),
+                        error = null,
+                        isLoading = false
+                    )
+                }
+                log("Summary updated for ${payload.date}", notify = true)
+            }.onFailure { error ->
+                summaryState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = error.message ?: "Summary fetch failed"
+                    )
+                }
+                log("Summary fetch failed: ${error.message ?: "unknown error"}", notify = true)
+            }
+        }
     }
 
     fun updateVadThreshold(value: Float) {
@@ -240,8 +298,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         container.configRepository.saveNoiseGate(clamped)
     }
 
-    private fun log(message: String) {
-        container.logStore.add(message)
+    private fun log(message: String, notify: Boolean = false) {
+        container.logStore.add(message, notify)
     }
 }
 
@@ -249,6 +307,17 @@ data class TranscriptSummary(
     val id: String,
     val timestamp: Long,
     val summary: String,
+    val fullText: String,
     val chunkId: String,
     val srtPath: String
 )
+
+private data class SummaryUiState(
+    val date: String,
+    val text: String = "",
+    val updatedAt: Long? = null,
+    val error: String? = null,
+    val isLoading: Boolean = false
+)
+
+private fun currentUtcDate(): String = LocalDate.now(ZoneOffset.UTC).toString()

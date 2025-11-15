@@ -70,7 +70,7 @@ class ArchiveSyncWorker(
             )
         }.getOrElse {
             container.syncStatusStore.markError(it.message ?: "Upload error")
-            container.logStore.add("Sync error: ${it.message}")
+            container.logStore.add("Sync error: ${it.message}", notify = true)
             return Result.retry()
         }
 
@@ -87,11 +87,11 @@ class ArchiveSyncWorker(
             }
             container.chunkRepository.markUploaded(pending.map { it.id })
             container.syncStatusStore.markSuccess("Synced ${pending.size} chunks", buildResult.shareableFile.absolutePath)
-            container.logStore.add("Sync: uploaded archive (${pending.size} chunks)")
+            container.logStore.add("Sync: uploaded archive (${pending.size} chunks)", notify = true)
             Result.success()
         } else {
             container.syncStatusStore.markError("Sync failed ${response.code()}")
-            container.logStore.add("Sync failed ${response.code()}")
+            container.logStore.add("Sync failed ${response.code()}", notify = true)
             Result.retry()
         }
     }

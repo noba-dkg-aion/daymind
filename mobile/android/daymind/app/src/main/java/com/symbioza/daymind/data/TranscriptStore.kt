@@ -10,11 +10,13 @@ import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONObject
 
 data class TranscriptEntry(
     val id: String,
     val timestamp: Long,
     val summary: String,
+    val fullText: String,
     val chunkId: String,
     val srtPath: String
 )
@@ -38,14 +40,15 @@ class TranscriptStore(context: Context) {
         val srtFile = File(baseDir, "$entryId.srt")
         srtFile.writeText(buildSrt(text, sessionStart, sessionEnd, segments), Charsets.UTF_8)
         val summary = text.lineSequence().firstOrNull()?.take(140) ?: "(empty)"
-        val json = mapOf(
-            "id" to entryId,
-            "chunk_id" to chunkId,
-            "ts" to timestamp,
-            "summary" to summary,
-            "srt_path" to srtFile.absolutePath
-        )
-        listFile.appendText("${serialize(json)}\n", Charsets.UTF_8)
+        val json = JSONObject().apply {
+            put("id", entryId)
+            put("chunk_id", chunkId)
+            put("ts", timestamp)
+            put("summary", summary)
+            put("text", text)
+            put("srt_path", srtFile.absolutePath)
+        }
+        listFile.appendText("${json}\n", Charsets.UTF_8)
         _entries.value = readEntries()
     }
 
@@ -56,13 +59,15 @@ class TranscriptStore(context: Context) {
         return listFile.readLines(Charsets.UTF_8)
             .mapNotNull { line ->
                 runCatching {
-                    val data = deserialize(line)
+                    if (line.isBlank()) return@mapNotNull null
+                    val data = JSONObject(line)
                     TranscriptEntry(
-                        id = data["id"] as String,
-                        timestamp = (data["ts"] as Number).toLong(),
-                        summary = data["summary"] as String,
-                        chunkId = data["chunk_id"] as String,
-                        srtPath = data["srt_path"] as String
+                        id = data.getString("id"),
+                        timestamp = data.optLong("ts", System.currentTimeMillis()),
+                        summary = data.optString("summary", ""),
+                        fullText = data.optString("text", data.optString("summary", "")),
+                        chunkId = data.optString("chunk_id"),
+                        srtPath = data.optString("srt_path")
                     )
                 }.getOrNull()
             }
@@ -91,32 +96,5 @@ class TranscriptStore(context: Context) {
             lines.add("")
         }
         return lines.joinToString("\n")
-    }
-
-    private fun serialize(data: Map<String, Any>): String {
-        return buildString {
-            append("{")
-            append(data.entries.joinToString(",") { (k, v) ->
-                val value = when (v) {
-                    is Number, is Boolean -> v.toString()
-                    else -> "\"${v}\""
-                }
-                "\"$k\":$value"
-            })
-            append("}")
-        }
-    }
-
-    private fun deserialize(json: String): Map<String, Any> {
-        val result = mutableMapOf<String, Any>()
-        val trimmed = json.trim().removePrefix("{").removeSuffix("}")
-        if (trimmed.isBlank()) return result
-        trimmed.split(",").forEach { pair ->
-            val (rawKey, rawValue) = pair.split(":", limit = 2)
-            val key = rawKey.trim().removePrefix("\"").removeSuffix("\"")
-            val value = rawValue.trim().removePrefix("\"").removeSuffix("\"")
-            result[key] = value
-        }
-        return result
     }
 }

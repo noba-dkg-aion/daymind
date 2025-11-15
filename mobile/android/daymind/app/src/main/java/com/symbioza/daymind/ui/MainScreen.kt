@@ -6,20 +6,38 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Mic
 import androidx.compose.material.icons.outlined.NotificationsActive
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.symbioza.daymind.state.ChunkSummary
 import com.symbioza.daymind.state.UiState
 import com.symbioza.daymind.state.TranscriptSummary
@@ -32,13 +50,18 @@ import com.symbioza.daymind.ui.components.SecondaryButton
 import com.symbioza.daymind.ui.components.SectionCard
 import com.symbioza.daymind.ui.components.StatusBadge
 import com.symbioza.daymind.ui.theme.DayMindPalette
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.text.Charsets
 
 @Composable
 fun DayMindScreen(
     state: UiState,
+    snackbarHostState: SnackbarHostState,
     onToggleRecording: () -> Unit,
     onSync: () -> Unit,
     onShareLatestChunk: () -> Unit,
@@ -49,9 +72,11 @@ fun DayMindScreen(
     onShareTranscript: (TranscriptSummary) -> Unit,
     onThresholdChange: (Float) -> Unit,
     onAggressivenessChange: (Float) -> Unit,
-    onNoiseGateChange: (Float) -> Unit
+    onNoiseGateChange: (Float) -> Unit,
+    onRefreshSummary: () -> Unit
 ) {
-    DMScaffold {
+    var previewTranscript by remember { mutableStateOf<TranscriptSummary?>(null) }
+    DMScaffold(snackbarHostState = snackbarHostState) {
         Text(
             text = "DayMind Live",
             style = MaterialTheme.typography.headlineSmall,
@@ -74,13 +99,17 @@ fun DayMindScreen(
                 )
             }
             item {
-                SummarySection(state = state)
+                SummarySection(state = state, onRefreshSummary = onRefreshSummary)
             }
             item {
                 ChunkVaultSection(state = state, onShareChunk = onShareChunk)
             }
             item {
-                TranscriptSection(state = state, onShareTranscript = onShareTranscript)
+                TranscriptSection(
+                    state = state,
+                    onShareTranscript = onShareTranscript,
+                    onViewTranscript = { previewTranscript = it }
+                )
             }
             item {
                 ActivityLogSection(entries = state.logEntries)
@@ -96,6 +125,9 @@ fun DayMindScreen(
                 )
             }
         }
+    }
+    previewTranscript?.let {
+        TranscriptDetailDialog(transcript = it, onDismiss = { previewTranscript = null })
     }
 }
 
@@ -147,7 +179,7 @@ private fun RecordSection(
 }
 
 @Composable
-private fun SummarySection(state: UiState) {
+private fun SummarySection(state: UiState, onRefreshSummary: () -> Unit) {
     SectionCard(
         title = "Session insights",
         subtitle = "Uploader heartbeat, Text-First policy, and quick QA hints."
@@ -161,6 +193,94 @@ private fun SummarySection(state: UiState) {
         InfoBanner(
             message = "Voice chunks stay on-device until you tap sync. JSONL metadata + FLAC archives follow the Text-First Storage policy."
         )
+        SummaryCard(
+            summaryDate = state.summaryDate,
+            summaryText = state.summaryText,
+            lastUpdated = state.summaryUpdatedAt,
+            isLoading = state.isSummaryLoading,
+            error = state.summaryError,
+            onRefresh = onRefreshSummary
+        )
+    }
+}
+
+@Composable
+private fun SummaryCard(
+    summaryDate: String,
+    summaryText: String,
+    lastUpdated: Long?,
+    isLoading: Boolean,
+    error: String?,
+    onRefresh: () -> Unit
+) {
+    val updatedFormatter = remember { SimpleDateFormat("HH:mm:ss", Locale.getDefault()) }
+    val scrollState = rememberScrollState()
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Daily summary",
+                    color = DayMindPalette.textPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = summaryDate.ifBlank { "Awaiting sync" },
+                    color = DayMindPalette.textSecondary,
+                    fontSize = 13.sp
+                )
+            }
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            } else {
+                IconButton(onClick = onRefresh, enabled = !isLoading) {
+                    Icon(
+                        imageVector = Icons.Outlined.Refresh,
+                        contentDescription = "Refresh summary",
+                        tint = DayMindPalette.textPrimary
+                    )
+                }
+            }
+        }
+        when {
+            error != null -> {
+                Text(text = error, color = DayMindPalette.danger, fontSize = 13.sp)
+            }
+            summaryText.isBlank() -> {
+                Text(
+                    text = "No summary published yet. Run a sync to generate daily notes.",
+                    color = DayMindPalette.textSecondary,
+                    fontSize = 13.sp
+                )
+            }
+            else -> {
+                SelectionContainer {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .verticalScroll(scrollState)
+                    ) {
+                        Text(
+                            text = summaryText,
+                            color = DayMindPalette.textPrimary,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+        lastUpdated?.let {
+            Text(
+                text = "Last updated ${updatedFormatter.format(Date(it))}",
+                color = DayMindPalette.textMuted,
+                fontSize = 12.sp
+            )
+        }
     }
 }
 
@@ -183,7 +303,11 @@ private fun ChunkVaultSection(state: UiState, onShareChunk: (ChunkSummary) -> Un
 }
 
 @Composable
-private fun TranscriptSection(state: UiState, onShareTranscript: (TranscriptSummary) -> Unit) {
+private fun TranscriptSection(
+    state: UiState,
+    onShareTranscript: (TranscriptSummary) -> Unit,
+    onViewTranscript: (TranscriptSummary) -> Unit
+) {
     SectionCard(
         title = "Transcripts",
         subtitle = "Latest Whisper captures with timestamped SRT export."
@@ -191,6 +315,7 @@ private fun TranscriptSection(state: UiState, onShareTranscript: (TranscriptSumm
         if (state.transcripts.isEmpty()) {
             Text("No transcripts yet.", color = DayMindPalette.textSecondary)
         } else {
+            val formatter = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 state.transcripts.take(5).forEach { transcript ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -204,7 +329,20 @@ private fun TranscriptSection(state: UiState, onShareTranscript: (TranscriptSumm
                             color = DayMindPalette.textMuted,
                             fontSize = 12.sp
                         )
+                        Text(
+                            text = formatter.format(Date(transcript.timestamp)),
+                            color = DayMindPalette.textSecondary,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = transcript.fullText.ifBlank { "No transcript text saved" },
+                            color = DayMindPalette.textSecondary,
+                            fontSize = 13.sp,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
                         SecondaryButton(text = "Share transcript") { onShareTranscript(transcript) }
+                        SecondaryButton(text = "Inspect timeline") { onViewTranscript(transcript) }
                     }
                 }
             }
@@ -264,6 +402,56 @@ private fun ChunkRow(chunk: ChunkSummary, onShare: (ChunkSummary) -> Unit) {
         Spacer(modifier = Modifier.height(4.dp))
         SecondaryButton(text = "Share") { onShare(chunk) }
     }
+}
+
+@Composable
+private fun TranscriptDetailDialog(transcript: TranscriptSummary, onDismiss: () -> Unit) {
+    val formatter = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+    val scrollState = rememberScrollState()
+    val srtContent by produceState(initialValue = "Loading transcript…", key1 = transcript.id) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { File(transcript.srtPath).readText(Charsets.UTF_8) }
+                .getOrElse { "Unable to load transcript: ${it.message}" }
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = "Close", color = DayMindPalette.accent)
+            }
+        },
+        title = {
+            Text(
+                text = "Transcript ${transcript.chunkId.take(6)}",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Captured ${formatter.format(Date(transcript.timestamp))}",
+                    color = DayMindPalette.textSecondary,
+                    fontSize = 13.sp
+                )
+                SelectionContainer {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp)
+                            .verticalScroll(scrollState)
+                    ) {
+                        Text(
+                            text = srtContent,
+                            color = DayMindPalette.textPrimary,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+        }
+    )
 }
 
 @Composable
