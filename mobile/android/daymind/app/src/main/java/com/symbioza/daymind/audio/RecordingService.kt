@@ -181,7 +181,8 @@ class RecordingService : Service() {
             sampleRate = SAMPLE_RATE,
             speechSegments = trimResult.segments
         )
-        container.syncStatusStore.markSuccess("Chunk saved locally")
+        val pending = container.chunkRepository.pendingChunks().size
+        container.syncStatusStore.markSuccess("Chunk saved locally ($pending pending)")
     }
 
     private fun buildNotification(): Notification {
