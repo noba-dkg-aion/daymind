@@ -74,13 +74,62 @@ run_local_verify() {
   local app_port="${APP_PORT:-8000}"
   local api_log="${APP_DIR}/api.log"
 
-  systemctl daemon-reload || true
+  systemctl daemon-reload
+
+  # Restart API service
   if systemctl list-unit-files daymind-api.service >/dev/null 2>&1; then
-    systemctl restart daymind-api.service || true
+    echo "Restarting daymind-api.service..."
+    if ! systemctl restart daymind-api.service; then
+      echo "::error::Failed to restart daymind-api.service" >&2
+      systemctl status daymind-api.service --no-pager || true
+      journalctl -u daymind-api.service -n 50 --no-pager || true
+      return 1
+    fi
+    # Wait for service to be fully active
+    local attempts=30
+    for attempt in $(seq 1 "$attempts"); do
+      if systemctl is-active --quiet daymind-api.service; then
+        echo "✅ daymind-api.service is active"
+        break
+      fi
+      if [ "$attempt" -eq "$attempts" ]; then
+        echo "::error::daymind-api.service failed to become active" >&2
+        systemctl status daymind-api.service --no-pager || true
+        journalctl -u daymind-api.service -n 50 --no-pager || true
+        return 1
+      fi
+      sleep 1
+    done
   else
     echo "daymind-api.service not found; starting uvicorn manually"
     pkill -f "uvicorn src.api.main" >/dev/null 2>&1 || true
     nohup "${APP_DIR}/venv/bin/uvicorn" src.api.main:app --host "$app_host" --port "$app_port" >> "$api_log" 2>&1 &
+  fi
+
+  # Restart Fava service
+  if systemctl list-unit-files daymind-fava.service >/dev/null 2>&1; then
+    echo "Restarting daymind-fava.service..."
+    if ! systemctl restart daymind-fava.service; then
+      echo "::error::Failed to restart daymind-fava.service" >&2
+      systemctl status daymind-fava.service --no-pager || true
+      journalctl -u daymind-fava.service -n 50 --no-pager || true
+      return 1
+    fi
+    # Wait for service to be fully active
+    local attempts=30
+    for attempt in $(seq 1 "$attempts"); do
+      if systemctl is-active --quiet daymind-fava.service; then
+        echo "✅ daymind-fava.service is active"
+        break
+      fi
+      if [ "$attempt" -eq "$attempts" ]; then
+        echo "::error::daymind-fava.service failed to become active" >&2
+        systemctl status daymind-fava.service --no-pager || true
+        journalctl -u daymind-fava.service -n 50 --no-pager || true
+        return 1
+      fi
+      sleep 1
+    done
   fi
 
   wait_for_port "$app_port"
