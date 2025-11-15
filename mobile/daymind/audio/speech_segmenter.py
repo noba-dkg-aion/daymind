@@ -32,12 +32,25 @@ class SpeechSegmenter:
         self.min_gap_samples = self._ms_to_samples(min_gap_ms)
         self.padding_samples = self._ms_to_samples(padding_ms)
         self.amplitude_threshold = amplitude_threshold
+        self.vad_aggressiveness = min(max(vad_aggressiveness, 0), 3)
         self._vad = None
-        if webrtcvad:
-            try:
-                self._vad = webrtcvad.Vad(min(max(vad_aggressiveness, 0), 3))
-            except Exception:
-                self._vad = None
+        self._init_vad()
+
+    def set_amplitude_threshold(self, value: int) -> None:
+        self.amplitude_threshold = max(500, int(value))
+
+    def set_vad_aggressiveness(self, value: int) -> None:
+        self.vad_aggressiveness = min(max(int(value), 0), 3)
+        self._init_vad()
+
+    def _init_vad(self) -> None:
+        if not webrtcvad:
+            self._vad = None
+            return
+        try:
+            self._vad = webrtcvad.Vad(self.vad_aggressiveness)
+        except Exception:
+            self._vad = None
 
     def process(self, pcm: np.ndarray) -> tuple[np.ndarray, list[SpeechSegment]]:
         mono = self._ensure_mono(pcm)

@@ -15,6 +15,9 @@ class TranscribeResponse(BaseModel):
     end: float = 0.0
     confidence: float | None = None
     session_id: int | None = None
+    session_start: str | None = None
+    session_end: str | None = None
+    speech_segments: list[Dict[str, Any]] | None = None
 
 
 class IngestRequest(BaseModel):

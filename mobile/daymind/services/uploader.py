@@ -5,18 +5,25 @@ from __future__ import annotations
 import threading
 import time
 from pathlib import Path
-from typing import Callable
 
 from .logger import LogBuffer
 from .network import ApiClient, ApiError
 from ..store.queue_store import ChunkQueue
+from ..store.transcript_store import TranscriptStore
 
 
 class UploadWorker:
-    def __init__(self, queue: ChunkQueue, client: ApiClient, logger: LogBuffer) -> None:
+    def __init__(
+        self,
+        queue: ChunkQueue,
+        client: ApiClient,
+        logger: LogBuffer,
+        transcripts: TranscriptStore,
+    ) -> None:
         self.queue = queue
         self.client = client
         self.logger = logger
+        self.transcripts = transcripts
         self._stop_event = threading.Event()
         self._wake_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -52,7 +59,7 @@ class UploadWorker:
                     "session_end": entry.get("session_end"),
                     "speech_segments": entry.get("speech_segments"),
                 }
-                self.client.upload_chunk(entry["path"], entry.get("lang", "auto"), metadata)
+                response = self.client.upload_chunk(entry["path"], entry.get("lang", "auto"), metadata)
             except ApiError as exc:
                 self.logger.add(f"Upload failed ({entry_id[:6]}): {exc}")
                 self.queue.mark_failed(entry_id, str(exc))
@@ -63,4 +70,25 @@ class UploadWorker:
                 except Exception:
                     pass
                 self.queue.mark_sent(entry_id)
+                self._persist_transcript(entry_id, entry, response)
                 self.logger.add(f"Chunk {entry_id[:6]} sent")
+
+    def _persist_transcript(self, entry_id: str, entry: dict, response: dict | None) -> None:
+        if not response:
+            return
+        text = response.get("text", "").strip()
+        if not text:
+            return
+        session_start = entry.get("session_start") or response.get("session_start")
+        session_end = entry.get("session_end") or response.get("session_end")
+        speech_segments = response.get("speech_segments") or entry.get("speech_segments")
+        try:
+            self.transcripts.append(
+                chunk_id=entry_id,
+                text=text,
+                session_start=session_start,
+                session_end=session_end,
+                speech_segments=speech_segments,
+            )
+        except Exception as exc:  # pragma: no cover - best effort persistence
+            self.logger.add(f"Transcript save failed ({entry_id[:6]}): {exc}")

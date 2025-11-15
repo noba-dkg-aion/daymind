@@ -65,3 +65,11 @@ def test_segmenter_uses_webrtc_when_available(monkeypatch):
     assert registry["level"] == 2
     assert trimmed.size > 0
     assert len(segments) == 1
+
+
+def test_segmenter_dynamic_threshold(monkeypatch):
+    monkeypatch.setattr(seg_mod, "webrtcvad", None)
+    segmenter = seg_mod.SpeechSegmenter(sample_rate=8000, amplitude_threshold=1000)
+    assert segmenter.amplitude_threshold == 1000
+    segmenter.set_amplitude_threshold(6000)
+    assert segmenter.amplitude_threshold == 6000

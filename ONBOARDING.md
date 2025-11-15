@@ -48,6 +48,7 @@ curl -H "X-API-Key: $KEY" http://localhost:8000/v1/usage
 - Follow `mobile/daymind/README.md` to build the Kivy client via Buildozer.
 - Enter the server URL + API key in the Settings tab, tap “Test connection”, then start recording.
 - The refreshed Aurora theme mirrors the landing site. Capture fresh screenshots with `python scripts/ui_snapshot.py --output artifacts/ui/latest` and compare with `artifacts/ui/reference/` before shipping a build.
+- Use the **Audio sensitivity** sliders in Settings to dial mic threshold, WebRTC aggressiveness, and noise gate for the target environment so you only capture intentional speech.
 
 ## 6. Deployment Path
 

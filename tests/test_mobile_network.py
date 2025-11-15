@@ -39,7 +39,8 @@ def test_upload_chunk_success(tmp_path):
             }
         ],
     }
-    client.upload_chunk(str(audio), metadata=metadata)
+    resp = client.upload_chunk(str(audio), metadata=metadata)
+    assert resp["text"] == "ok"
     assert client.test_connection() is True
 
 

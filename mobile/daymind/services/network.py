@@ -41,7 +41,12 @@ class ApiClient:
         except Exception as exc:
             raise ApiError(str(exc))
 
-    def upload_chunk(self, file_path: str, lang: str = "auto", metadata: Optional[Dict[str, Any]] = None) -> None:
+    def upload_chunk(
+        self,
+        file_path: str,
+        lang: str = "auto",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         try:
             payload = {"lang": lang}
             metadata = metadata or {}
@@ -63,6 +68,10 @@ class ApiClient:
             if resp.status_code == 401:
                 raise ApiError("Unauthorized: check API key")
             resp.raise_for_status()
+            try:
+                return resp.json()
+            except ValueError as exc:
+                raise ApiError(f"Invalid response: {exc}") from exc
         except httpx.HTTPStatusError as exc:
             raise ApiError(f"Upload failed: {exc.response.status_code}")
         except Exception as exc:

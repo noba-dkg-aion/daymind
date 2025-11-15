@@ -105,7 +105,10 @@ def test_transcribe_endpoint(api_client):
         files={"file": (audio_path.name, audio_path.read_bytes(), "audio/wav")},
     )
     assert resp.status_code == 200
-    assert "text" in resp.json()
+    data = resp.json()
+    assert "text" in data
+    assert "session_id" in data
+    assert data.get("speech_segments") is None or isinstance(data["speech_segments"], list)
     assert transcripts.exists()
 
 
@@ -131,6 +134,9 @@ def test_transcribe_with_metadata(api_client):
         },
     )
     assert resp.status_code == 200
+    resp_data = resp.json()
+    assert resp_data["session_start"] == "2024-01-01T00:00:00Z"
+    assert resp_data["speech_segments"][0]["start_utc"] == "2024-01-01T00:00:00Z"
     assert transcripts.exists()
     line = [line for line in transcripts.read_text().splitlines() if line][-1]
     data = json.loads(line)

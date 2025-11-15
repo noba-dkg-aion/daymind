@@ -22,6 +22,7 @@ from .services.logger import LogBuffer
 from .services.network import ApiClient, ApiError
 from .services.uploader import UploadWorker
 from .store.queue_store import ChunkQueue
+from .store.transcript_store import TranscriptStore
 from .store.settings_store import SettingsStore
 from .ui.components import load_components
 from .ui.theme import DayMindTheme
@@ -194,6 +195,51 @@ ScreenManager:
                         on_press: app.test_connection()
                 InfoBanner:
                     message: "Need a key? Use `python -m src.api.services.auth_service --store data/api_keys.json create mobile-demo` then paste it here."
+                DMCard:
+                    SectionHeading:
+                        text: "Audio sensitivity"
+                    BodyText:
+                        text: "Tweak mic threshold, aggressiveness, and noise gate live to suppress background noise without losing speech."
+                    MDBoxLayout:
+                        orientation: "vertical"
+                        spacing: app.theme.spacing.grid
+                        MDLabel:
+                            text: "Sensitivity (threshold: {} )".format(int(app.vad_threshold))
+                            theme_text_color: "Custom"
+                            text_color: app.theme.palette.text_secondary
+                            font_style: app.theme.typography.caption
+                        MDSlider:
+                            min: 1500
+                            max: 9000
+                            value: app.vad_threshold
+                            on_value: app.set_vad_threshold(self.value)
+                    MDBoxLayout:
+                        orientation: "vertical"
+                        spacing: app.theme.spacing.grid
+                        MDLabel:
+                            text: "WebRTC VAD aggressiveness: {}".format(int(app.vad_aggressiveness))
+                            theme_text_color: "Custom"
+                            text_color: app.theme.palette.text_secondary
+                            font_style: app.theme.typography.caption
+                        MDSlider:
+                            min: 0
+                            max: 3
+                            step: 1
+                            value: app.vad_aggressiveness
+                            on_value: app.set_vad_aggressiveness(self.value)
+                    MDBoxLayout:
+                        orientation: "vertical"
+                        spacing: app.theme.spacing.grid
+                        MDLabel:
+                            text: "Noise gate {:.0%}".format(app.noise_gate)
+                            theme_text_color: "Custom"
+                            text_color: app.theme.palette.text_secondary
+                            font_style: app.theme.typography.caption
+                        MDSlider:
+                            min: 0.0
+                            max: 0.6
+                            value: app.noise_gate
+                            on_value: app.set_noise_gate(self.value)
 """
 
 
@@ -223,6 +269,9 @@ class DayMindApp(MDApp):
     input_level = NumericProperty(0.0)
     record_glow = NumericProperty(0.0)
     theme = ObjectProperty(DayMindTheme.default())
+    vad_threshold = NumericProperty(3500)
+    vad_aggressiveness = NumericProperty(2)
+    noise_gate = NumericProperty(0.12)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -240,16 +289,28 @@ class DayMindApp(MDApp):
         self.base_dir = Path(self.user_data_dir or Path.home() / ".daymind")
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.settings_store = SettingsStore(self.base_dir / CONFIG.settings_file)
+        settings = self.settings_store.get()
+        self.server_url = settings.server_url
+        self.api_key = settings.api_key
+        self.vad_threshold = settings.vad_threshold
+        self.vad_aggressiveness = settings.vad_aggressiveness
+        self.noise_gate = settings.noise_gate
         self.queue = ChunkQueue(self.base_dir / CONFIG.queue_file)
+        transcripts_dir = self.base_dir / "transcripts"
+        transcripts_path = transcripts_dir / "daymind_transcripts.srt"
+        self.transcript_store = TranscriptStore(transcripts_path)
         self.logger = LogBuffer(CONFIG.log_history)
         self.api_client = ApiClient(self.settings_store)
-        self.uploader = UploadWorker(self.queue, self.api_client, self.logger)
+        self.uploader = UploadWorker(self.queue, self.api_client, self.logger, self.transcript_store)
         chunks_dir = self.base_dir / "chunks"
         self.recorder = AudioRecorder(
             chunks_dir,
             self.logger,
             self._handle_chunk,
             level_callback=self._update_input_level,
+            amplitude_threshold=int(self.vad_threshold),
+            vad_aggressiveness=int(self.vad_aggressiveness),
+            noise_gate=float(self.noise_gate),
         )
         self._sync_state(initial=True)
         return ScreenManager()
@@ -326,6 +387,34 @@ class DayMindApp(MDApp):
         self.logger.add("Settings saved")
         self._show_snackbar("Settings saved", icon="content-save")
 
+    def set_vad_threshold(self, value: float):
+        value = int(value)
+        if value == self.vad_threshold:
+            return
+        self.vad_threshold = value
+        self.settings_store.update(vad_threshold=value)
+        self.recorder.set_vad_threshold(value)
+        self.logger.add(f"VAD threshold set to {value}")
+
+    def set_vad_aggressiveness(self, value: float):
+        value = int(round(value))
+        value = min(max(value, 0), 3)
+        if value == self.vad_aggressiveness:
+            return
+        self.vad_aggressiveness = value
+        self.settings_store.update(vad_aggressiveness=value)
+        self.recorder.set_vad_aggressiveness(value)
+        self.logger.add(f"VAD aggressiveness set to {value}")
+
+    def set_noise_gate(self, value: float):
+        clamped = max(0.0, min(float(value), 1.0))
+        if abs(clamped - float(self.noise_gate)) < 0.005:
+            return
+        self.noise_gate = clamped
+        self.settings_store.update(noise_gate=clamped)
+        self.recorder.set_noise_gate(clamped)
+        self.logger.add(f"Noise gate set to {clamped:.2f}")
+
     def test_connection(self):
         def worker():
             try:
@@ -357,6 +446,9 @@ class DayMindApp(MDApp):
         if initial:
             self.server_url = settings.server_url
             self.api_key = settings.api_key
+            self.vad_threshold = settings.vad_threshold
+            self.vad_aggressiveness = settings.vad_aggressiveness
+            self.noise_gate = settings.noise_gate
 
     def _prepare_chunk_metadata(self, chunk: RecordedChunk) -> dict:
         start_iso = self._isoformat(chunk.session_start)
