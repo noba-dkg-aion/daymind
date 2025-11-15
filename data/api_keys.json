@@ -3,10 +3,10 @@
     "key": "k",
     "owner": "env",
     "created_at": 1762839440.4694307,
-    "usage_count": 12,
-    "last_used": 1762917365.223659,
+    "usage_count": 14,
+    "last_used": 1763172171.6503608,
     "revoked": false,
-    "requests_today": 4,
-    "requests_day": 20251112
+    "requests_today": 2,
+    "requests_day": 20251115
   }
 ]
