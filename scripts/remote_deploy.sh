@@ -40,17 +40,26 @@ curl_with_retry() {
   local mode="${3:-plain}"
   local attempts=10
   for attempt in $(seq 1 "$attempts"); do
+    local http_code="000"
     if [ "$mode" = "head" ]; then
-      if curl -fsS "${CURL_HEADER_ARGS[@]}" "$url" | head >/dev/null; then
-        echo "✅ ${label}"
-        return 0
+      if ! http_code=$(curl -sS "${CURL_HEADER_ARGS[@]}" -o >(head >/dev/null) -w "%{http_code}" "$url"); then
+        http_code="000"
       fi
     else
-      if curl -fsS "${CURL_HEADER_ARGS[@]}" "$url" >/dev/null; then
-        echo "✅ ${label}"
-        return 0
+      if ! http_code=$(curl -sS "${CURL_HEADER_ARGS[@]}" -o /dev/null -w "%{http_code}" "$url"); then
+        http_code="000"
       fi
     fi
+
+    if [ "$http_code" = "200" ]; then
+      echo "✅ ${label}"
+      return 0
+    fi
+
+    if [ "$http_code" = "401" ]; then
+      echo "::error::Invalid API key (401) for ${label}" >&2
+    fi
+
     echo "Retry ${label} (${attempt}/${attempts})"
     sleep 2
   done
@@ -70,6 +79,34 @@ run_local_verify() {
     . "$env_file"
     set +a
   fi
+
+  # Ensure DAYMIND_API_KEY exists; generate and persist if missing
+  if [ -z "${DAYMIND_API_KEY:-}" ]; then
+    echo "::warning::DAYMIND_API_KEY not set; generating temporary key for verification"
+    if ! command -v openssl >/dev/null 2>&1; then
+      echo "::error::openssl is required to generate DAYMIND_API_KEY" >&2
+      return 1
+    fi
+    local generated_key
+    generated_key="$(openssl rand -hex 32)"
+    local tmpfile
+    tmpfile="$(mktemp)"
+    if [ -f "$env_file" ]; then
+      grep -v '^DAYMIND_API_KEY=' "$env_file" > "$tmpfile" || true
+    fi
+    printf 'DAYMIND_API_KEY=%s\n' "$generated_key" >> "$tmpfile"
+    if [ "$(id -u)" -ne 0 ]; then
+      sudo tee "$env_file" >/dev/null < "$tmpfile"
+      sudo chmod 640 "$env_file"
+    else
+      mv "$tmpfile" "$env_file"
+      chmod 640 "$env_file"
+    fi
+    rm -f "$tmpfile" >/dev/null 2>&1 || true
+    export DAYMIND_API_KEY="$generated_key"
+    echo "Generated DAYMIND_API_KEY=${generated_key}"
+  fi
+
   local app_host="${APP_HOST:-127.0.0.1}"
   local app_port="${APP_PORT:-8000}"
   local api_log="${APP_DIR}/api.log"
