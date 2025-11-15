@@ -4,15 +4,19 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.Typography
 
 private val darkColorScheme = darkColorScheme(
-    primary = PrimaryBlue,
-    onPrimary = OnPrimary,
-    surface = DarkSurface,
-    onSurface = Color.White,
-    background = DarkBackground,
-    onBackground = Color.White,
+    primary = DayMindPalette.accent,
+    onPrimary = DayMindPalette.textPrimary,
+    secondary = DayMindPalette.accentSoft,
+    onSecondary = DayMindPalette.textPrimary,
+    background = DayMindPalette.background,
+    onBackground = DayMindPalette.textPrimary,
+    surface = DayMindPalette.surface,
+    onSurface = DayMindPalette.textPrimary,
+    surfaceVariant = DayMindPalette.surfaceAlt,
+    onSurfaceVariant = DayMindPalette.textSecondary,
 )
 
 @Composable
@@ -22,7 +26,7 @@ fun DayMindTheme(
 ) {
     MaterialTheme(
         colorScheme = darkColorScheme,
-        typography = MaterialTheme.typography,
+        typography = Typography,
         content = content
     )
 }
