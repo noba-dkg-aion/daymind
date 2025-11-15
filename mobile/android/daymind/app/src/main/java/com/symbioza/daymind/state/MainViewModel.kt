@@ -13,8 +13,8 @@ import java.io.File
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 
@@ -30,7 +30,9 @@ data class UiState(
     val chunks: List<ChunkSummary> = emptyList(),
     val vadThreshold: Int = 3500,
     val vadAggressiveness: Int = 2,
-    val noiseGate: Float = 0.12f
+    val noiseGate: Float = 0.12f,
+    val logEntries: List<String> = emptyList(),
+    val transcripts: List<TranscriptSummary> = emptyList()
 )
 
 data class ChunkSummary(
@@ -68,12 +70,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private val transcriptsFlow = MutableStateFlow(container.transcriptStore.entries())
+
     val uiState: StateFlow<UiState> = combine(
         baseFlow,
         container.chunkRepository.chunkList,
         container.chunkPlaybackManager.isPlaying,
-        audioSettingsFlow
-    ) { base, chunks, isPlaying, audioSettings ->
+        audioSettingsFlow,
+        container.logStore.entries,
+        transcriptsFlow
+    ) { base, chunks, isPlaying, audioSettings, logEntries, transcripts ->
         UiState(
             isRecording = base.isRecording,
             pendingChunks = base.pendingChunks,
@@ -93,7 +99,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             },
             vadThreshold = audioSettings.vadThreshold,
             vadAggressiveness = audioSettings.vadAggressiveness,
-            noiseGate = audioSettings.noiseGate
+            noiseGate = audioSettings.noiseGate,
+            logEntries = logEntries,
+            transcripts = transcripts.map {
+                TranscriptSummary(
+                    id = it.id,
+                    timestamp = it.timestamp,
+                    summary = it.summary,
+                    chunkId = it.chunkId,
+                    srtPath = it.srtPath
+                )
+            }
         )
     }.stateIn(
         scope = viewModelScope,
@@ -193,9 +209,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         container.configRepository.saveVadAggressiveness(rounded)
     }
 
-    fun updateNoiseGate(value: Float) {
+fun updateNoiseGate(value: Float) {
         val clamped = value.coerceIn(0f, 0.6f)
         audioSettingsFlow.update { it.copy(noiseGate = clamped) }
         container.configRepository.saveNoiseGate(clamped)
     }
 }
+
+data class TranscriptSummary(
+    val id: String,
+    val timestamp: Long,
+    val summary: String,
+    val chunkId: String,
+    val srtPath: String
+)
