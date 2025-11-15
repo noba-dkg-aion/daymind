@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from ..deps.auth import get_api_key
-from ..schemas import TranscribeResponse
+from ..schemas import BatchTranscribeResponse, TranscribeResponse
 from ..services.transcript_service import TranscriptService
 from ..settings import APISettings, get_settings
 
@@ -32,3 +32,14 @@ async def transcribe_audio(
         confidence=record.get("confidence"),
         session_id=record.get("session_id"),
     )
+
+
+@router.post("/transcribe/batch", response_model=BatchTranscribeResponse)
+async def transcribe_archive(
+    archive: UploadFile = File(...),
+    manifest: str = Form(...),
+    _: str = Depends(get_api_key),
+    service: TranscriptService = Depends(get_service),
+):
+    result = await service.process_archive(archive, manifest)
+    return BatchTranscribeResponse(**result)

@@ -64,6 +64,7 @@ The Kivy-based DayMind companion app exposes three tabs (Record / Summary / Sett
 
 - **Recording toggle + indicator** – 6 s WAV chunks saved privately, pending counter increments every ~6 s so you know audio is being captured.
 - **Manual sync + FLAC archive** – tap **Sync Now** to concatenate pending chunks, encode them into a FLAC archive, and upload/share on demand (no auto upload every few seconds).
+- **Backend Whisper mode** – install `faster-whisper` in the runtime venv and set `WHISPER_MODEL=<tiny|small|...>` (plus optional `WHISPER_DEVICE`, `WHISPER_COMPUTE_TYPE`); keep `WHISPER_USE_MOCK=1` only for CI/tests. Production deployments should set `WHISPER_USE_MOCK=0` so `/v1/transcribe` and `/v1/transcribe/batch` run Whisper locally.
 - **Settings** – persists Server URL + API Key; “Test connection” calls `/healthz` and logs the result.
 - **Summary** – fetches `/v1/summary?date=<today>` off the UI thread, with friendly errors and manual refresh.
 - **Privacy controls** – “Clear queue” deletes pending files; nothing runs until the user taps Start.

@@ -44,6 +44,14 @@ class APISettings(BaseModel):
         default=os.getenv("TLS_REQUIRED", "false").lower() in {"1", "true", "yes"}
     )
     tls_proxy_host: str | None = Field(default=os.getenv("TLS_PROXY_HOST"))
+    whisper_model: str = Field(default=os.getenv("WHISPER_MODEL", "tiny"))
+    whisper_device: str = Field(default=os.getenv("WHISPER_DEVICE", "cpu"))
+    whisper_compute_type: str = Field(
+        default=os.getenv("WHISPER_COMPUTE_TYPE", "int8")
+    )
+    whisper_mock_transcriber: bool = Field(
+        default=os.getenv("WHISPER_USE_MOCK", "false").lower() in {"1", "true", "yes"}
+    )
 
 
 def _split_keys() -> List[str]:

@@ -8,3 +8,5 @@ pydantic>=2.7,<3
 pydantic-settings>=2,<3
 beancount>=2.3,<3
 fava>=1.27,<2
+soundfile>=0.12,<1
+numpy>=2.0,<3

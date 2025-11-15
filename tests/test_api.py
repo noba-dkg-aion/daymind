@@ -1,9 +1,11 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+import numpy as np
+import soundfile as sf
 
 from src.api.deps.auth import reset_auth_service_cache
 
@@ -28,6 +30,7 @@ def api_client(tmp_path, monkeypatch):
         data_dir=str(tmp_path),
         api_rate_limit_per_minute=120,
         ip_rate_limit_per_minute=0,
+        whisper_mock_transcriber=True,
     )
 
     app = create_app()
@@ -104,6 +107,72 @@ def test_transcribe_endpoint(api_client):
     assert resp.status_code == 200
     assert "text" in resp.json()
     assert transcripts.exists()
+
+
+def test_batch_transcribe_endpoint(api_client, tmp_path):
+    client, transcripts, *_ = api_client
+    audio_path = Path("tests/assets/sample_cs.wav")
+    audio, sr = sf.read(str(audio_path))
+    chunk_len = sr // 4
+    first = audio[:chunk_len]
+    second = audio[chunk_len : chunk_len * 2]
+    combined = np.concatenate([first, second])
+    archive_path = tmp_path / "archive.flac"
+    sf.write(str(archive_path), combined, sr, format="FLAC")
+
+    start = datetime.now(timezone.utc).replace(microsecond=0)
+    first_duration = len(first) / sr
+    second_duration = len(second) / sr
+    def _iso(dt: datetime) -> str:
+        return dt.isoformat().replace("+00:00", "Z")
+
+    manifest = {
+        "archive_id": "test-archive",
+        "generated_utc": _iso(start),
+        "chunk_count": 2,
+        "chunks": [
+            {
+                "chunk_id": "chunk-1",
+                "session_start": _iso(start),
+                "session_end": _iso(start + timedelta(seconds=first_duration)),
+                "speech_segments": [
+                    {
+                        "start_utc": _iso(start),
+                        "end_utc": _iso(start + timedelta(seconds=first_duration)),
+                    }
+                ],
+            },
+            {
+                "chunk_id": "chunk-2",
+                "session_start": _iso(start + timedelta(seconds=first_duration)),
+                "session_end": _iso(
+                    start + timedelta(seconds=first_duration + second_duration)
+                ),
+                "speech_segments": [
+                    {
+                        "start_utc": _iso(start + timedelta(seconds=first_duration)),
+                        "end_utc": _iso(
+                            start + timedelta(seconds=first_duration + second_duration)
+                        ),
+                    }
+                ],
+            },
+        ],
+    }
+
+    files = {
+        "archive": ("archive.flac", archive_path.read_bytes(), "audio/flac"),
+    }
+    data = {"manifest": json.dumps(manifest)}
+    resp = client.post(
+        "/v1/transcribe/batch", headers=_auth_headers(), files=files, data=data
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["processed"] == 2
+    assert transcripts.exists()
+    lines = [line for line in transcripts.read_text().strip().splitlines() if line]
+    assert len(lines) >= 2
 
 
 def test_metrics_secured(api_client):
