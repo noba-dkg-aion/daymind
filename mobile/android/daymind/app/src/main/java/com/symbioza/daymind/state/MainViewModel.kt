@@ -20,7 +20,8 @@ data class UiState(
     val isSyncing: Boolean = false,
     val canPlayChunk: Boolean = false,
     val isPlayingBack: Boolean = false,
-    val hasArchiveToShare: Boolean = false
+    val hasArchiveToShare: Boolean = false,
+    val canShareChunk: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -31,8 +32,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         container.chunkRepository.pendingCount,
         container.syncStatusStore.status,
         container.chunkRepository.latestChunkPath,
+        container.chunkRepository.latestExternalPath,
         container.chunkPlaybackManager.isPlaying
-    ) { recording, pending, syncStatus, latestChunkPath, isPlaying ->
+    ) { values ->
+        val recording = values[0] as Boolean
+        val pending = values[1] as Int
+        val syncStatus = values[2] as com.symbioza.daymind.upload.SyncStatus
+        val latestChunkPath = values[3] as String?
+        val latestExternal = values[4] as String?
+        val isPlaying = values[5] as Boolean
         UiState(
             isRecording = recording,
             pendingChunks = pending,
@@ -40,7 +48,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isSyncing = syncStatus.isSyncing,
             canPlayChunk = !latestChunkPath.isNullOrBlank(),
             isPlayingBack = isPlaying,
-            hasArchiveToShare = !syncStatus.latestArchivePath.isNullOrBlank()
+            hasArchiveToShare = !syncStatus.latestArchivePath.isNullOrBlank(),
+            canShareChunk = !latestExternal.isNullOrBlank()
         )
     }.stateIn(
         scope = viewModelScope,
@@ -86,6 +95,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share DayMind archive")
+        )
+    }
+
+    fun shareLastChunk() {
+        val path = container.chunkRepository.latestExternalPath.value ?: return
+        val file = File(path)
+        if (!file.exists()) return
+        val uri = FileProvider.getUriForFile(
+            getApplication(),
+            "${getApplication<Application>().packageName}.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "audio/wav"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        getApplication<Application>().startActivity(
+            Intent.createChooser(intent, "Share latest chunk")
         )
     }
 }

@@ -1,10 +1,11 @@
 package com.symbioza.daymind.data
 
 import android.content.Context
+import android.os.Environment
+import androidx.core.content.ContextCompat
 import com.symbioza.daymind.audio.SpeechSegment
 import java.io.File
 import java.time.Instant
-import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,11 +15,19 @@ import org.json.JSONObject
 
 class ChunkRepository(context: Context) {
     private val chunksDir: File = File(context.cacheDir, "vault").apply { mkdirs() }
+    private val externalDir: File = run {
+        ContextCompat.getExternalFilesDirs(context, Environment.DIRECTORY_MUSIC)
+            .firstOrNull()
+            ?.let { File(it, "daymind_chunks") }
+            ?: File(context.filesDir, "chunks_export")
+    }.apply { mkdirs() }
     private val manifestFile = File(chunksDir, "chunks_manifest.json")
     private val _pendingCount = MutableStateFlow(0)
     val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
     private val _latestChunkPath = MutableStateFlow<String?>(null)
     val latestChunkPath: StateFlow<String?> = _latestChunkPath.asStateFlow()
+    private val _latestExternalPath = MutableStateFlow<String?>(null)
+    val latestExternalPath: StateFlow<String?> = _latestExternalPath.asStateFlow()
     private val manifest: MutableList<ChunkMetadata> = loadManifest()
 
     init {
@@ -36,6 +45,7 @@ class ChunkRepository(context: Context) {
 
     fun registerChunk(
         file: File,
+        externalPath: String,
         sessionStart: Instant,
         durationMs: Long,
         sampleRate: Int,
@@ -44,6 +54,7 @@ class ChunkRepository(context: Context) {
         val data = ChunkMetadata(
             id = UUID.randomUUID().toString(),
             filePath = file.absolutePath,
+            externalPath = externalPath,
             sessionStartUtc = sessionStart.toString(),
             createdAt = System.currentTimeMillis(),
             durationMs = durationMs,
@@ -71,10 +82,18 @@ class ChunkRepository(context: Context) {
 
     fun refresh() {
         _pendingCount.value = manifest.count { !it.uploaded }
-        _latestChunkPath.value = manifest.maxByOrNull { it.createdAt }?.filePath
+        val latest = manifest.maxByOrNull { it.createdAt }
+        _latestChunkPath.value = latest?.filePath
+        _latestExternalPath.value = latest?.externalPath
     }
 
     fun archiveDirectory(): File = File(chunksDir, "archives").apply { mkdirs() }
+
+    fun mirrorToExternal(source: File): File {
+        val dest = File(externalDir, source.name)
+        source.copyTo(dest, overwrite = true)
+        return dest
+    }
 
     private fun persistManifest() {
         val json = JSONArray()
@@ -82,6 +101,7 @@ class ChunkRepository(context: Context) {
             val obj = JSONObject().apply {
                 put("id", meta.id)
                 put("file_path", meta.filePath)
+                put("external_path", meta.externalPath)
                 put("session_start", meta.sessionStartUtc)
                 put("created_at", meta.createdAt)
                 put("duration_ms", meta.durationMs)
@@ -130,6 +150,7 @@ class ChunkRepository(context: Context) {
                         ChunkMetadata(
                             id = obj.getString("id"),
                             filePath = obj.getString("file_path"),
+                            externalPath = obj.optString("external_path", obj.getString("file_path")),
                             sessionStartUtc = obj.getString("session_start"),
                             createdAt = obj.optLong("created_at", System.currentTimeMillis()),
                             durationMs = obj.getLong("duration_ms"),

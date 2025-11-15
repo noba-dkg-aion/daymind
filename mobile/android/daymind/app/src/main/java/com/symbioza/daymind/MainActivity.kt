@@ -44,6 +44,7 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onSync = viewModel::syncNow,
+                    onShareLatestChunk = viewModel::shareLastChunk,
                     onPlayLastChunk = viewModel::playLatestChunk,
                     onStopPlayback = viewModel::stopPlayback,
                     onShareArchive = viewModel::shareArchive

@@ -20,6 +20,7 @@ fun DayMindScreen(
     state: UiState,
     onToggleRecording: () -> Unit,
     onSync: () -> Unit,
+    onShareLatestChunk: () -> Unit,
     onPlayLastChunk: () -> Unit,
     onStopPlayback: () -> Unit,
     onShareArchive: () -> Unit
@@ -50,6 +51,13 @@ fun DayMindScreen(
                 enabled = state.canPlayChunk || state.isPlayingBack
             ) {
                 Text(if (state.isPlayingBack) "Stop Playback" else "Play Last Chunk")
+            }
+
+            Button(
+                onClick = onShareLatestChunk,
+                enabled = state.canShareChunk
+            ) {
+                Text("Share Last Chunk")
             }
 
             Button(

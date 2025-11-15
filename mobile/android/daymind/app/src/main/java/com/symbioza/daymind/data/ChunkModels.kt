@@ -10,6 +10,7 @@ data class SpeechSegmentJson(
 data class ChunkMetadata(
     val id: String,
     val filePath: String,
+    val externalPath: String,
     val sessionStartUtc: String,
     val createdAt: Long,
     val durationMs: Long,

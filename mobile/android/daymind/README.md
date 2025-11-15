@@ -30,6 +30,7 @@ Foreground-only Kotlin/Compose app that records mono 16 kHz WAV chunks, queues
 - The `Record` toggle starts a foreground `AudioRecord` service (PCM 16‑bit, 16 kHz mono) that writes 6 s WAV chunks into `cacheDir/vault/`, trims trailing/leading silence, and captures speech windows for each clip. The **Pending chunks** counter on the home screen increments every ~6 s so you can confirm audio is flowing even before syncing.
 - Chunks remain on-device until you tap **Sync Now**. Manual sync concatenates every pending chunk (in chronological order), encodes the session into FLAC, uploads the archive + manifest, and marks the chunks as uploaded—no background uploads every 6 s.
 - **Play Last Chunk** lets you audition the latest trimmed clip (button becomes **Stop Playback** while audio is playing).
+- **Share Last Chunk** copies the original (untrimmed) WAV into `Android/data/<app id>/files/Music/daymind_chunks/` and opens the Android share sheet so you can inspect it in any audio player or file manager.
 - **Share Archive** exposes the last FLAC bundle via the Android Share sheet (files are stored under `Android/data/com.symbioza.daymind/files/Music/` for playback in any external app).
 
 ### Manual sync & compression
@@ -46,6 +47,7 @@ Foreground-only Kotlin/Compose app that records mono 16 kHz WAV chunks, queues
 1. Record as long as you like; pending chunk count grows (visible on the main screen) but nothing leaves the device.
 2. Tap **Sync Now** when you want to upload. The button shows “Syncing…” while the FLAC archive + manifest upload; afterwards the pending counter resets to 0.
 3. Tap **Share Archive** to send the latest FLAC elsewhere (email, Drive, standalone audio app, etc.). Files live under `Android/data/<app id>/files/Music/`.
+4. Tap **Share Last Chunk** whenever you want the raw WAV for a single clip (with silence intact). Every chunk is mirrored to `Android/data/<app id>/files/Music/daymind_chunks/` so you can browse or delete them manually.
 4. Archives and manifests remain on-device; delete them manually if storage is tight.
 
 ## Privacy notes

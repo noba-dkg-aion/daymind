@@ -158,6 +158,8 @@ class RecordingService : Service() {
             container.chunkRepository.refresh()
             return
         }
+        val externalCopy = runCatching { container.chunkRepository.mirrorToExternal(chunk.file) }
+            .getOrNull()
         val trimResult = runCatching {
             SilenceTrimmer.trim(chunk.file, SAMPLE_RATE)
         }.getOrNull()
@@ -176,6 +178,7 @@ class RecordingService : Service() {
         val durationMs = (trimResult.keptSamples * 1000L) / SAMPLE_RATE
         container.chunkRepository.registerChunk(
             file = chunk.file,
+            externalPath = externalCopy?.absolutePath ?: chunk.file.absolutePath,
             sessionStart = chunk.sessionStart,
             durationMs = durationMs,
             sampleRate = SAMPLE_RATE,
