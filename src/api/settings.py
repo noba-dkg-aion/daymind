@@ -52,6 +52,12 @@ class APISettings(BaseModel):
     whisper_mock_transcriber: bool = Field(
         default=os.getenv("WHISPER_USE_MOCK", "false").lower() in {"1", "true", "yes"}
     )
+    whisper_use_openai: bool = Field(
+        default=os.getenv("WHISPER_USE_OPENAI", "false").lower() in {"1", "true", "yes"}
+    )
+    openai_whisper_model: str = Field(
+        default=os.getenv("OPENAI_WHISPER_MODEL", "gpt-4o-mini-transcribe")
+    )
 
 
 def _split_keys() -> List[str]:

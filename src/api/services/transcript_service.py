@@ -7,8 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import numpy as np
 import soundfile as sf
 from fastapi import UploadFile
+from openai import AsyncOpenAI
 
 from src.stt_core.buffer_store import BufferStore
 from src.stt_core.redis_io import RedisPublisher
@@ -25,6 +27,12 @@ class TranscriptService:
         self.settings = settings
         self.buffer = BufferStore(settings.transcript_path)
         self.whisper = WhisperEngine(settings)
+        self.settings = settings
+        self._openai_client: Optional[AsyncOpenAI] = None
+        if settings.whisper_use_openai:
+            if not settings.openai_api_key:
+                raise RuntimeError("WHISPER_USE_OPENAI=1 but OPENAI_API_KEY is missing")
+            self._openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
         self._redis: Optional[RedisPublisher] = None
         if settings.redis_url:
             self._redis = RedisPublisher(settings.redis_url, settings.redis_stream)
@@ -40,9 +48,7 @@ class TranscriptService:
         tmp_path = tmp_dir / f"{int(time.time() * 1000)}_{file.filename}"
         tmp_path.write_bytes(await file.read())
 
-        text, start_offset, end_offset, final_lang, confidence = (
-            self.whisper.transcribe_path(tmp_path, language=lang)
-        )
+        text, start_offset, end_offset, final_lang, confidence = await self._transcribe_file(tmp_path, lang)
         now = time.time()
         entry = {
             "text": text,
@@ -85,9 +91,7 @@ class TranscriptService:
             pointer = end_pointer
             if chunk_audio.size == 0:
                 continue
-            text, _, _, final_lang, confidence = self.whisper.transcribe_audio(
-                chunk_audio, sample_rate, language=None
-            )
+            text, _, _, final_lang, confidence = await self._transcribe_array(chunk_audio, sample_rate)
             entry = {
                 "text": text,
                 "lang": final_lang,
@@ -128,6 +132,33 @@ class TranscriptService:
             await self._redis.publish(payload)
         except Exception:
             return
+
+    async def _transcribe_file(self, path: Path, language: str | None) -> tuple[str, float, float, str, float | None]:
+        if self.settings.whisper_use_openai:
+            assert self._openai_client
+            with path.open("rb") as handle:
+                transcript = await self._openai_client.audio.transcriptions.create(
+                    model=self.settings.openai_whisper_model,
+                    file=("chunk.wav", handle, "audio/wav"),
+                    response_format="verbose_json",
+                )
+            text = transcript.text or ""
+            segments = transcript.segments or []
+            start = segments[0].get("start", 0.0) if segments else 0.0
+            end = segments[-1].get("end", 0.0) if segments else 0.0
+            lang = transcript.language or language or "auto"
+            return text, float(start), float(end), lang, None
+        return self.whisper.transcribe_path(path, language=language)
+
+    async def _transcribe_array(self, audio: np.ndarray, sample_rate: int) -> tuple[str, float, float, str, float | None]:
+        if self.settings.whisper_use_openai:
+            tmp = Path(self.settings.data_dir) / "tmp_array.wav"
+            tmp.parent.mkdir(parents=True, exist_ok=True)
+            sf.write(str(tmp), audio, sample_rate)
+            result = await self._transcribe_file(tmp, None)
+            tmp.unlink(missing_ok=True)
+            return result
+        return self.whisper.transcribe_audio(audio, sample_rate, language=None)
 
 
 def _to_epoch(value: datetime) -> float:
