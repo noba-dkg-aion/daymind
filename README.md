@@ -68,6 +68,8 @@ The Kivy-based DayMind companion app exposes three tabs (Record / Summary / Sett
 - **Settings** – persists Server URL + API Key; “Test connection” calls `/healthz` and logs the result.
 - **Summary** – fetches `/v1/summary?date=<today>` off the UI thread, with friendly errors and manual refresh.
 - **Privacy controls** – “Clear queue” deletes pending files; nothing runs until the user taps Start.
+- **Aurora theme** – shared palette/typography between the landing site and client plus animated VAD-driven record control, queue badges, and snackbar variants.
+- **Visual QA hook** – run `python scripts/ui_snapshot.py --output artifacts/ui/latest` to capture Record/Summary/Settings screenshots and diff them with `artifacts/ui/reference/` before tagging builds.
 
 Desktop preview:
 
@@ -181,6 +183,19 @@ Go to `chrome-extension` for instructions.
 | OpenAI API backend | `openai` |
 
 See  **Parameters & Configuration** below on how to use them.
+
+### Running Tests
+
+The DayMind fork carries its own API/mobile/finance stack plus the WhisperLiveKit core. To verify everything locally:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+pytest
+```
+
+`tests/conftest.py` injects the repo root into `sys.path`, so no extra `PYTHONPATH` export is required. The same command runs inside CI and should finish in under 6 s on a modern laptop.
 
 
 

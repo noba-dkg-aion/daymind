@@ -4,16 +4,28 @@ from __future__ import annotations
 
 import threading
 import time
-import wave
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
+import numpy as np
+import soundfile as sf
+
 from ..config import CONFIG
 from ..services.logger import LogBuffer
+from .speech_segmenter import SpeechSegmenter
+from .types import RecordedChunk
 
 
 class AudioRecorder:
-    def __init__(self, output_dir: Path, logger: LogBuffer, on_chunk: Callable[[str], None]) -> None:
+    def __init__(
+        self,
+        output_dir: Path,
+        logger: LogBuffer,
+        on_chunk: Callable[[RecordedChunk], None],
+        *,
+        level_callback: Callable[[float], None] | None = None,
+    ) -> None:
         self.output_dir = output_dir
         self.logger = logger
         self.on_chunk = on_chunk
@@ -23,6 +35,8 @@ class AudioRecorder:
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._sd = self._try_import_sounddevice()
+        self.segmenter = SpeechSegmenter(self.sample_rate)
+        self.level_callback = level_callback
 
     def _try_import_sounddevice(self):
         try:
@@ -49,34 +63,64 @@ class AudioRecorder:
 
     def _loop(self) -> None:
         while not self._stop.is_set():
-            path = self._record_chunk()
-            if path:
-                self.on_chunk(path)
+            chunk = self._record_chunk()
+            if chunk:
+                self.on_chunk(chunk)
             time.sleep(0.1)
 
-    def _record_chunk(self) -> Optional[str]:
-        filename = f"chunk_{int(time.time()*1000)}.wav"
-        path = self.output_dir / filename
+    def _record_chunk(self) -> Optional[RecordedChunk]:
+        session_start = datetime.now(timezone.utc)
         frames = self.sample_rate * self.chunk_seconds
+        pcm = self._capture_audio(frames)
+        if pcm is None:
+            return None
+        self._report_level(pcm)
+        return self._finalize_chunk(pcm, session_start)
+
+    def _capture_audio(self, frames: int) -> Optional[np.ndarray]:
         if self._sd:
             try:
                 data = self._sd.rec(frames, samplerate=self.sample_rate, channels=self.channels, dtype="int16")
                 self._sd.wait()
-                self._write_wave(path, data)
-                return str(path)
+                return self._to_mono_array(np.array(data, dtype=np.int16))
             except Exception as exc:
                 self.logger.add(f"sounddevice error: {exc}")
-        # fallback: silence
         import array
 
         buffer = array.array("h", [0] * frames)
-        self._write_wave(path, buffer)
-        return str(path)
+        return np.array(buffer, dtype=np.int16)
 
-    def _write_wave(self, path: Path, data) -> None:
-        with wave.open(str(path), "wb") as wf:
-            wf.setnchannels(self.channels)
-            wf.setsampwidth(2)
-            wf.setframerate(self.sample_rate)
-            wf.writeframes(data.tobytes() if hasattr(data, "tobytes") else data)
+    def _finalize_chunk(self, pcm: np.ndarray, session_start: datetime) -> Optional[RecordedChunk]:
+        trimmed, segments = self.segmenter.process(pcm)
+        if not segments or trimmed.size == 0:
+            self.logger.add("No speech detected; chunk discarded")
+            return None
+        filename = f"chunk_{int(session_start.timestamp()*1000)}.flac"
+        path = self.output_dir / filename
+        self._write_flac(path, trimmed)
+        duration = len(pcm) / self.sample_rate
+        session_end = session_start + timedelta(seconds=duration)
+        return RecordedChunk(
+            path=str(path),
+            session_start=session_start,
+            session_end=session_end,
+            speech_segments=segments,
+        )
 
+    def _report_level(self, pcm: np.ndarray) -> None:
+        if not self.level_callback:
+            return
+        try:
+            level = float(np.max(np.abs(pcm))) / 32768.0
+        except ValueError:
+            level = 0.0
+        level = max(0.0, min(1.0, level))
+        self.level_callback(level)
+
+    def _write_flac(self, path: Path, samples: np.ndarray) -> None:
+        sf.write(str(path), samples.astype(np.int16, copy=False), self.sample_rate, format="FLAC", subtype="PCM_16")
+
+    def _to_mono_array(self, data: np.ndarray) -> np.ndarray:
+        if data.ndim == 1:
+            return data
+        return data[:, 0]

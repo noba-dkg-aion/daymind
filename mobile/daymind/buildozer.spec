@@ -7,7 +7,7 @@ package.domain = dev.symbioza
 source.dir = .
 source.include_exts = py,kv,png,jpg,jpeg,svg,ttf,json,md,wav
 version = 0.6.0
-requirements = python3,kivy==2.2.1,httpx==0.26.0,sounddevice,numpy
+requirements = python3,kivy==2.2.1,kivymd==1.1.1,httpx==0.26.0,sounddevice,numpy
 orientation = portrait
 fullscreen = 0
 log_level = 1
@@ -23,4 +23,3 @@ android.logcat_filters = *:S python:D
 [buildozer]
 log_level = 2
 warn_on_root = 0
-

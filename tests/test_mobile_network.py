@@ -15,6 +15,9 @@ def make_client(tmp_path, transport):
 def test_upload_chunk_success(tmp_path):
     def handler(request):
         if request.method == "POST" and request.url.path.endswith("/v1/transcribe"):
+            body = request.content.decode("utf-8", errors="ignore")
+            assert "session_start" in body
+            assert "speech_segments" in body
             return httpx.Response(200, json={"text": "ok"})
         if request.url.path == "/healthz":
             return httpx.Response(200, json={"ok": True, "tls": "skip"})
@@ -22,9 +25,21 @@ def test_upload_chunk_success(tmp_path):
 
     transport = httpx.MockTransport(handler)
     client = make_client(tmp_path, transport)
-    audio = tmp_path / "chunk.wav"
+    audio = tmp_path / "chunk.flac"
     audio.write_bytes(b"123")
-    client.upload_chunk(str(audio))
+    metadata = {
+        "session_start": "2024-01-01T00:00:00Z",
+        "session_end": "2024-01-01T00:00:06Z",
+        "speech_segments": [
+            {
+                "start_ms": 0,
+                "end_ms": 1000,
+                "start_utc": "2024-01-01T00:00:00Z",
+                "end_utc": "2024-01-01T00:00:01Z",
+            }
+        ],
+    }
+    client.upload_chunk(str(audio), metadata=metadata)
     assert client.test_connection() is True
 
 

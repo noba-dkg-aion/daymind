@@ -21,7 +21,7 @@ class ExternalChunkStore(private val context: Context) {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, source.name)
-            put(MediaStore.Audio.Media.MIME_TYPE, "audio/wav")
+            put(MediaStore.Audio.Media.MIME_TYPE, "audio/flac")
             put(MediaStore.Audio.Media.RELATIVE_PATH, "${Environment.DIRECTORY_MUSIC}/DayMind")
             put(MediaStore.Audio.Media.DATE_ADDED, createdAt / 1000)
             put(MediaStore.Audio.Media.IS_PENDING, 1)

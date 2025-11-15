@@ -12,3 +12,4 @@ pyyaml>=6.0.0
 fava>=1.27,<2
 soundfile>=0.12,<1
 numpy>=2.0,<3
+webrtcvad>=2.0.10

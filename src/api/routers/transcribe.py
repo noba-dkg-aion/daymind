@@ -19,11 +19,14 @@ def get_service(settings: APISettings = Depends(get_settings)) -> TranscriptServ
 @router.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe_audio(
     file: UploadFile = File(...),
-    lang: str | None = None,
+    lang: str | None = Form(None),
+    session_start: str | None = Form(None),
+    session_end: str | None = Form(None),
+    speech_segments: str | None = Form(None),
     _: str = Depends(get_api_key),
     service: TranscriptService = Depends(get_service),
 ):
-    record = await service.save_audio(file, lang)
+    record = await service.save_audio(file, lang, session_start, session_end, speech_segments)
     return TranscribeResponse(
         text=record["text"],
         lang=record.get("lang", "auto"),

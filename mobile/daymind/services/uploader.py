@@ -47,7 +47,12 @@ class UploadWorker:
             entry_id = entry["id"]
             try:
                 self.logger.add(f"Uploading chunk {entry_id[:6]}...")
-                self.client.upload_chunk(entry["path"], entry.get("lang", "auto"))
+                metadata = {
+                    "session_start": entry.get("session_start"),
+                    "session_end": entry.get("session_end"),
+                    "speech_segments": entry.get("speech_segments"),
+                }
+                self.client.upload_chunk(entry["path"], entry.get("lang", "auto"), metadata)
             except ApiError as exc:
                 self.logger.add(f"Upload failed ({entry_id[:6]}): {exc}")
                 self.queue.mark_failed(entry_id, str(exc))
@@ -59,4 +64,3 @@ class UploadWorker:
                     pass
                 self.queue.mark_sent(entry_id)
                 self.logger.add(f"Chunk {entry_id[:6]} sent")
-

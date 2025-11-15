@@ -109,6 +109,35 @@ def test_transcribe_endpoint(api_client):
     assert transcripts.exists()
 
 
+def test_transcribe_with_metadata(api_client):
+    client, transcripts, *_ = api_client
+    audio_path = Path("tests/assets/sample_cs.wav")
+    segments = [
+        {
+            "start_ms": 0,
+            "end_ms": 800,
+            "start_utc": "2024-01-01T00:00:00Z",
+            "end_utc": "2024-01-01T00:00:00.8Z",
+        }
+    ]
+    resp = client.post(
+        "/v1/transcribe",
+        headers=_auth_headers(),
+        files={"file": (audio_path.name, audio_path.read_bytes(), "audio/wav")},
+        data={
+            "session_start": "2024-01-01T00:00:00Z",
+            "session_end": "2024-01-01T00:00:06Z",
+            "speech_segments": json.dumps(segments),
+        },
+    )
+    assert resp.status_code == 200
+    assert transcripts.exists()
+    line = [line for line in transcripts.read_text().splitlines() if line][-1]
+    data = json.loads(line)
+    assert data["session_start"] == "2024-01-01T00:00:00Z"
+    assert data["speech_segments"][0]["start_utc"] == "2024-01-01T00:00:00Z"
+
+
 def test_batch_transcribe_endpoint(api_client, tmp_path):
     client, transcripts, *_ = api_client
     audio_path = Path("tests/assets/sample_cs.wav")

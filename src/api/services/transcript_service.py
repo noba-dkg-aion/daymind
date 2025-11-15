@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,7 +40,12 @@ class TranscriptService:
             self._redis = RedisPublisher(settings.redis_url, settings.redis_stream)
 
     async def save_audio(
-        self, file: UploadFile, lang: str | None = None
+        self,
+        file: UploadFile,
+        lang: str | None = None,
+        session_start: str | None = None,
+        session_end: str | None = None,
+        speech_segments_payload: str | None = None,
     ) -> Dict[str, Any]:
         """Handle a single wav/flac upload."""
 
@@ -60,6 +66,12 @@ class TranscriptService:
             "session_id": int(now),
             "source": str(tmp_path),
         }
+        if session_start:
+            entry["session_start"] = session_start
+        if session_end:
+            entry["session_end"] = session_end
+        if speech_segments_payload:
+            entry["speech_segments"] = self._parse_speech_segments(speech_segments_payload)
         self.buffer.append(entry)
         await self._publish(entry)
         return entry
@@ -133,6 +145,21 @@ class TranscriptService:
     def _samples_for_chunk(self, chunk: ManifestChunk, sample_rate: int) -> int:
         duration = (chunk.session_end - chunk.session_start).total_seconds()
         return max(1, int(round(duration * sample_rate)))
+
+    def _parse_speech_segments(self, payload: str) -> list[Dict[str, Any]]:
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(data, dict):
+            data = [data]
+        if not isinstance(data, list):
+            return []
+        segments: list[Dict[str, Any]] = []
+        for item in data:
+            if isinstance(item, dict):
+                segments.append(item)
+        return segments
 
     async def _publish(self, payload: Dict[str, Any]) -> None:
         if not self._redis:

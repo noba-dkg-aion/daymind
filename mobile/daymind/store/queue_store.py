@@ -15,7 +15,15 @@ class ChunkQueue:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._data = self._load()
 
-    def enqueue(self, file_path: str, lang: str = "auto") -> str:
+    def enqueue(
+        self,
+        file_path: str,
+        lang: str = "auto",
+        *,
+        session_start: Optional[str] = None,
+        session_end: Optional[str] = None,
+        speech_segments: Optional[List[Dict]] = None,
+    ) -> str:
         entry_id = uuid.uuid4().hex
         entry = {
             "id": entry_id,
@@ -26,6 +34,12 @@ class ChunkQueue:
             "next_retry": time.time(),
             "last_error": None,
         }
+        if session_start:
+            entry["session_start"] = session_start
+        if session_end:
+            entry["session_end"] = session_end
+        if speech_segments:
+            entry["speech_segments"] = speech_segments
         self._data.append(entry)
         self._persist()
         return entry_id
@@ -77,4 +91,3 @@ class ChunkQueue:
 
     def _persist(self) -> None:
         self.path.write_text(json.dumps(self._data, ensure_ascii=False), encoding="utf-8")
-

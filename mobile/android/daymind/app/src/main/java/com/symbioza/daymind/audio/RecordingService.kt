@@ -18,6 +18,7 @@ import com.symbioza.daymind.AppContainer
 import com.symbioza.daymind.DayMindApplication
 import com.symbioza.daymind.MainActivity
 import com.symbioza.daymind.R
+import java.io.File
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,7 @@ class RecordingService : Service() {
     private val recordingFlag = AtomicBoolean(false)
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var recordingJob: Job? = null
+    private val flacEncoder by lazy { FlacEncoder(SAMPLE_RATE) }
 
     override fun onCreate() {
         super.onCreate()
@@ -173,9 +175,19 @@ class RecordingService : Service() {
             container.syncStatusStore.markSuccess("Silent chunk skipped")
             return
         }
+        val flacFile = File(chunk.file.parentFile, chunk.file.nameWithoutExtension + ".flac")
+        runCatching {
+            flacEncoder.encode(trimResult.samples, flacFile)
+        }.onFailure {
+            container.syncStatusStore.markError("FLAC encode failed: ${it.message}")
+            chunk.file.delete()
+            container.chunkRepository.refresh()
+            return
+        }
+        chunk.file.delete()
         val durationMs = (trimResult.keptSamples * 1000L) / SAMPLE_RATE
         container.chunkRepository.registerChunk(
-            file = chunk.file,
+            file = flacFile,
             externalPath = null,
             sessionStart = chunk.sessionStart,
             durationMs = durationMs,

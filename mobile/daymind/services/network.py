@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -40,16 +41,24 @@ class ApiClient:
         except Exception as exc:
             raise ApiError(str(exc))
 
-    def upload_chunk(self, file_path: str, lang: str = "auto") -> None:
+    def upload_chunk(self, file_path: str, lang: str = "auto", metadata: Optional[Dict[str, Any]] = None) -> None:
         try:
+            payload = {"lang": lang}
+            metadata = metadata or {}
+            if metadata.get("session_start"):
+                payload["session_start"] = metadata["session_start"]
+            if metadata.get("session_end"):
+                payload["session_end"] = metadata["session_end"]
+            if metadata.get("speech_segments"):
+                payload["speech_segments"] = json.dumps(metadata["speech_segments"], ensure_ascii=False)
             with open(file_path, "rb") as fh:
-                files = {"file": (Path(file_path).name, fh, "audio/wav")}
-                data = {"lang": lang}
+                mime = self._mime_type(file_path)
+                files = {"file": (Path(file_path).name, fh, mime)}
                 resp = self._client.post(
                     self._url("/v1/transcribe"),
                     headers=self._headers(),
                     files=files,
-                    data=data,
+                    data=payload,
                 )
             if resp.status_code == 401:
                 raise ApiError("Unauthorized: check API key")
@@ -58,6 +67,14 @@ class ApiClient:
             raise ApiError(f"Upload failed: {exc.response.status_code}")
         except Exception as exc:
             raise ApiError(str(exc))
+
+    def _mime_type(self, file_path: str) -> str:
+        suffix = Path(file_path).suffix.lower()
+        if suffix == ".flac":
+            return "audio/flac"
+        if suffix == ".mp3":
+            return "audio/mpeg"
+        return "audio/wav"
 
     def fetch_summary(self, date: Optional[str] = None) -> str:
         date = date or dt.datetime.utcnow().strftime("%Y-%m-%d")
@@ -79,4 +96,3 @@ class ApiClient:
 
     def close(self) -> None:
         self._client.close()
-
