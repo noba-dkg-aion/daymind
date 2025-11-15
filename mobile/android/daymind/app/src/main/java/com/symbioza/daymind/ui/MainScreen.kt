@@ -4,16 +4,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.symbioza.daymind.state.ChunkSummary
 import com.symbioza.daymind.state.UiState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun DayMindScreen(
@@ -23,7 +30,8 @@ fun DayMindScreen(
     onShareLatestChunk: () -> Unit,
     onPlayLastChunk: () -> Unit,
     onStopPlayback: () -> Unit,
-    onShareArchive: () -> Unit
+    onShareArchive: () -> Unit,
+    onShareChunk: (ChunkSummary) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -78,6 +86,33 @@ fun DayMindScreen(
                 Text(text = "Pending chunks: ${state.pendingChunks}")
                 Text(text = state.syncMessage)
             }
+
+            if (state.chunks.isNotEmpty()) {
+                Text("Chunk Vault", style = MaterialTheme.typography.titleMedium)
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(state.chunks.take(10)) { chunk ->
+                        ChunkRow(chunk, onShareChunk)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChunkRow(chunk: ChunkSummary, onShare: (ChunkSummary) -> Unit) {
+    val formatter = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
+    Column(horizontalAlignment = Alignment.Start) {
+        Text(text = "Chunk ${chunk.id.take(6)}", fontWeight = FontWeight.Bold)
+        Text(text = "Saved: ${formatter.format(Date(chunk.createdAt))}")
+        Text(text = if (chunk.uploaded) "Uploaded" else "Pending")
+        Button(onClick = { onShare(chunk) }) {
+            Text("Share")
         }
     }
 }

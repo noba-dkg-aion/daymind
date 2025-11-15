@@ -22,13 +22,15 @@ class ChunkRepository(context: Context) {
             ?: File(context.filesDir, "chunks_export")
     }.apply { mkdirs() }
     private val manifestFile = File(chunksDir, "chunks_manifest.json")
+    private val manifest: MutableList<ChunkMetadata> = loadManifest()
     private val _pendingCount = MutableStateFlow(0)
     val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
     private val _latestChunkPath = MutableStateFlow<String?>(null)
     val latestChunkPath: StateFlow<String?> = _latestChunkPath.asStateFlow()
     private val _latestExternalPath = MutableStateFlow<String?>(null)
     val latestExternalPath: StateFlow<String?> = _latestExternalPath.asStateFlow()
-    private val manifest: MutableList<ChunkMetadata> = loadManifest()
+    private val _chunkList = MutableStateFlow(manifest.sortedByDescending { it.createdAt })
+    val chunkList: StateFlow<List<ChunkMetadata>> = _chunkList.asStateFlow()
 
     init {
         refresh()
@@ -85,6 +87,7 @@ class ChunkRepository(context: Context) {
         val latest = manifest.maxByOrNull { it.createdAt }
         _latestChunkPath.value = latest?.filePath
         _latestExternalPath.value = latest?.externalPath
+        _chunkList.value = manifest.sortedByDescending { it.createdAt }
     }
 
     fun archiveDirectory(): File = File(chunksDir, "archives").apply { mkdirs() }

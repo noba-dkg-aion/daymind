@@ -31,6 +31,7 @@ Foreground-only Kotlin/Compose app that records mono 16 kHz WAV chunks, queues
 - Chunks remain on-device until you tap **Sync Now**. Manual sync concatenates every pending chunk (in chronological order), encodes the session into FLAC, uploads the archive + manifest, and marks the chunks as uploaded—no background uploads every 6 s.
 - **Play Last Chunk** lets you audition the latest trimmed clip (button becomes **Stop Playback** while audio is playing).
 - **Share Last Chunk** copies the original (untrimmed) WAV into `Android/data/<app id>/files/Music/daymind_chunks/` and opens the Android share sheet so you can inspect it in any audio player or file manager.
+- **Chunk Vault list** (bottom of the home screen) shows the newest 10 chunks with per-item **Share** actions so you can replay/export older clips without digging through the filesystem manually.
 - **Share Archive** exposes the last FLAC bundle via the Android Share sheet (files are stored under `Android/data/com.symbioza.daymind/files/Music/` for playback in any external app).
 
 ### Manual sync & compression
