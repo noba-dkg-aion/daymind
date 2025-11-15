@@ -21,6 +21,7 @@ object SilenceTrimmer {
     private const val DEFAULT_MIN_SPEECH_MS = 250L
     private const val DEFAULT_MIN_SILENCE_MS = 350L
     private const val DEFAULT_PADDING_MS = 150L
+    private const val DEFAULT_AGGRESSIVENESS = 2
     private const val FRAME_MS = 30L
     private const val HOP_MS = 15L
     private const val PRE_EMPHASIS = 0.97f
@@ -35,14 +36,24 @@ object SilenceTrimmer {
         threshold: Int = DEFAULT_THRESHOLD,
         minSpeechMs: Long = DEFAULT_MIN_SPEECH_MS,
         minSilenceMs: Long = DEFAULT_MIN_SILENCE_MS,
-        paddingMs: Long = DEFAULT_PADDING_MS
+        paddingMs: Long = DEFAULT_PADDING_MS,
+        aggressiveness: Int = DEFAULT_AGGRESSIVENESS
     ): TrimResult {
         val bytes = file.readBytes()
         if (bytes.size <= HEADER_BYTES) {
             return TrimResult(0, emptyList(), ShortArray(0))
         }
         val samples = extractSamples(bytes)
-        val sampleSegments = detectSegments(samples, sampleRate, threshold, minSpeechMs, minSilenceMs)
+        val adjustedThreshold = max(500, threshold)
+        val energyMultiplier = 1f + (aggressiveness.coerceIn(0, 3) * 0.4f)
+        val sampleSegments = detectSegments(
+            samples,
+            sampleRate,
+            adjustedThreshold,
+            minSpeechMs,
+            minSilenceMs,
+            energyMultiplier
+        )
         if (sampleSegments.isEmpty()) {
             return TrimResult(0, emptyList(), ShortArray(0))
         }
@@ -74,7 +85,8 @@ object SilenceTrimmer {
         sampleRate: Int,
         threshold: Int,
         minSpeechMs: Long,
-        minSilenceMs: Long
+        minSilenceMs: Long,
+        energyMultiplier: Float
     ): List<SampleSegment> {
         val frameSamples = (FRAME_MS * sampleRate / 1000).toInt().coerceAtLeast(1)
         val hopSamples = (HOP_MS * sampleRate / 1000).toInt().coerceAtLeast(1)
@@ -89,7 +101,7 @@ object SilenceTrimmer {
         while (offset + frameSamples <= samples.size) {
             val energy = frameEnergy(samples, offset, frameSamples)
             val zcr = frameZeroCrossRate(samples, offset, frameSamples)
-            val dynamicThreshold = max(MIN_ENERGY, noiseFloor * ENERGY_FACTOR)
+            val dynamicThreshold = max(MIN_ENERGY, noiseFloor * (ENERGY_FACTOR * energyMultiplier))
             val speech = energy > dynamicThreshold && zcr in MIN_ZCR..MAX_ZCR
             flags.add(speech)
             if (!speech) {

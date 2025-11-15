@@ -61,7 +61,10 @@ class MainActivity : ComponentActivity() {
                     onPlayLastChunk = viewModel::playLatestChunk,
                     onStopPlayback = viewModel::stopPlayback,
                     onShareArchive = viewModel::shareArchive,
-                    onShareChunk = viewModel::shareChunk
+                    onShareChunk = viewModel::shareChunk,
+                    onThresholdChange = viewModel::updateVadThreshold,
+                    onAggressivenessChange = viewModel::updateVadAggressiveness,
+                    onNoiseGateChange = viewModel::updateNoiseGate
                 )
             }
         }

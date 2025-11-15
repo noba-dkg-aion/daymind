@@ -5,6 +5,12 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.symbioza.daymind.BuildConfig
 
+data class AudioSettings(
+    val vadThreshold: Int = 3500,
+    val vadAggressiveness: Int = 2,
+    val noiseGate: Float = 0.12f
+)
+
 class ConfigRepository(context: Context) {
     private val encryptedPrefs = runCatching {
         val masterKey = MasterKey.Builder(context)
@@ -23,6 +29,26 @@ class ConfigRepository(context: Context) {
 
     fun getApiKey(): String = readOrDefault(KEY_API_KEY, BuildConfig.API_KEY)
 
+    fun getAudioSettings(): AudioSettings {
+        return AudioSettings(
+            vadThreshold = encryptedPrefs?.getInt(KEY_VAD_THRESHOLD, 3500) ?: 3500,
+            vadAggressiveness = encryptedPrefs?.getInt(KEY_VAD_AGGRESSIVENESS, 2) ?: 2,
+            noiseGate = encryptedPrefs?.getFloat(KEY_NOISE_GATE, 0.12f) ?: 0.12f
+        )
+    }
+
+    fun saveVadThreshold(value: Int) {
+        encryptedPrefs?.edit()?.putInt(KEY_VAD_THRESHOLD, value)?.apply()
+    }
+
+    fun saveVadAggressiveness(value: Int) {
+        encryptedPrefs?.edit()?.putInt(KEY_VAD_AGGRESSIVENESS, value)?.apply()
+    }
+
+    fun saveNoiseGate(value: Float) {
+        encryptedPrefs?.edit()?.putFloat(KEY_NOISE_GATE, value)?.apply()
+    }
+
     private fun readOrDefault(key: String, defaultValue: String): String {
         val value = encryptedPrefs?.getString(key, null)
         return value?.takeIf { it.isNotBlank() } ?: defaultValue
@@ -40,5 +66,8 @@ class ConfigRepository(context: Context) {
         private const val PREFS_NAME = "daymind.secrets"
         private const val KEY_SERVER_URL = "SERVER_URL"
         private const val KEY_API_KEY = "API_KEY"
+        private const val KEY_VAD_THRESHOLD = "VAD_THRESHOLD"
+        private const val KEY_VAD_AGGRESSIVENESS = "VAD_AGGRESSIVENESS"
+        private const val KEY_NOISE_GATE = "NOISE_GATE"
     }
 }

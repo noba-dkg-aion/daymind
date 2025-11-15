@@ -7,11 +7,15 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.symbioza.daymind.DayMindApplication
 import com.symbioza.daymind.audio.RecordingService
+import com.symbioza.daymind.config.AudioSettings
 import com.symbioza.daymind.upload.SyncStatus
 import java.io.File
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.stateIn
 
 data class UiState(
@@ -23,7 +27,10 @@ data class UiState(
     val isPlayingBack: Boolean = false,
     val hasArchiveToShare: Boolean = false,
     val canShareChunk: Boolean = false,
-    val chunks: List<ChunkSummary> = emptyList()
+    val chunks: List<ChunkSummary> = emptyList(),
+    val vadThreshold: Int = 3500,
+    val vadAggressiveness: Int = 2,
+    val noiseGate: Float = 0.12f
 )
 
 data class ChunkSummary(
@@ -43,6 +50,7 @@ private data class BaseUiState(
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (getApplication() as DayMindApplication).container
+    private val audioSettingsFlow = MutableStateFlow(container.configRepository.getAudioSettings())
 
     private val baseFlow = combine(
         container.recordingStateStore.isRecording,
@@ -63,8 +71,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<UiState> = combine(
         baseFlow,
         container.chunkRepository.chunkList,
-        container.chunkPlaybackManager.isPlaying
-    ) { base, chunks, isPlaying ->
+        container.chunkPlaybackManager.isPlaying,
+        audioSettingsFlow
+    ) { base, chunks, isPlaying, audioSettings ->
         UiState(
             isRecording = base.isRecording,
             pendingChunks = base.pendingChunks,
@@ -81,7 +90,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     externalPath = it.externalPath,
                     uploaded = it.uploaded
                 )
-            }
+            },
+            vadThreshold = audioSettings.vadThreshold,
+            vadAggressiveness = audioSettings.vadAggressiveness,
+            noiseGate = audioSettings.noiseGate
         )
     }.stateIn(
         scope = viewModelScope,
@@ -167,5 +179,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share chunk")
         )
+    }
+
+    fun updateVadThreshold(value: Float) {
+        val rounded = value.roundToInt().coerceIn(1500, 9000)
+        audioSettingsFlow.update { it.copy(vadThreshold = rounded) }
+        container.configRepository.saveVadThreshold(rounded)
+    }
+
+    fun updateVadAggressiveness(value: Float) {
+        val rounded = value.roundToInt().coerceIn(0, 3)
+        audioSettingsFlow.update { it.copy(vadAggressiveness = rounded) }
+        container.configRepository.saveVadAggressiveness(rounded)
+    }
+
+    fun updateNoiseGate(value: Float) {
+        val clamped = value.coerceIn(0f, 0.6f)
+        audioSettingsFlow.update { it.copy(noiseGate = clamped) }
+        container.configRepository.saveNoiseGate(clamped)
     }
 }

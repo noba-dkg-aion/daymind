@@ -3,6 +3,7 @@ package com.symbioza.daymind.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,6 +11,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -31,7 +33,10 @@ fun DayMindScreen(
     onPlayLastChunk: () -> Unit,
     onStopPlayback: () -> Unit,
     onShareArchive: () -> Unit,
-    onShareChunk: (ChunkSummary) -> Unit
+    onShareChunk: (ChunkSummary) -> Unit,
+    onThresholdChange: (Float) -> Unit,
+    onAggressivenessChange: (Float) -> Unit,
+    onNoiseGateChange: (Float) -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -100,6 +105,15 @@ fun DayMindScreen(
                     }
                 }
             }
+
+            AudioSensitivitySection(
+                vadThreshold = state.vadThreshold,
+                vadAggressiveness = state.vadAggressiveness,
+                noiseGate = state.noiseGate,
+                onThresholdChange = onThresholdChange,
+                onAggressivenessChange = onAggressivenessChange,
+                onNoiseGateChange = onNoiseGateChange
+            )
         }
     }
 }
@@ -113,6 +127,48 @@ private fun ChunkRow(chunk: ChunkSummary, onShare: (ChunkSummary) -> Unit) {
         Text(text = if (chunk.uploaded) "Uploaded" else "Pending")
         Button(onClick = { onShare(chunk) }) {
             Text("Share")
+        }
+    }
+}
+@Composable
+private fun AudioSensitivitySection(
+    vadThreshold: Int,
+    vadAggressiveness: Int,
+    noiseGate: Float,
+    onThresholdChange: (Float) -> Unit,
+    onAggressivenessChange: (Float) -> Unit,
+    onNoiseGateChange: (Float) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Audio Sensitivity", style = MaterialTheme.typography.titleMedium)
+        Column {
+            Text("VAD Threshold: $vadThreshold")
+            Slider(
+                value = vadThreshold.toFloat(),
+                onValueChange = onThresholdChange,
+                valueRange = 1500f..9000f
+            )
+        }
+        Column {
+            Text("Aggressiveness: $vadAggressiveness")
+            Slider(
+                value = vadAggressiveness.toFloat(),
+                onValueChange = onAggressivenessChange,
+                steps = 2,
+                valueRange = 0f..3f
+            )
+        }
+        Column {
+            Text("Noise gate: ${"%.0f".format(noiseGate * 100)}%")
+            Slider(
+                value = noiseGate,
+                onValueChange = onNoiseGateChange,
+                valueRange = 0f..0.6f
+            )
         }
     }
 }

@@ -18,6 +18,7 @@ import com.symbioza.daymind.AppContainer
 import com.symbioza.daymind.DayMindApplication
 import com.symbioza.daymind.MainActivity
 import com.symbioza.daymind.R
+import com.symbioza.daymind.config.AudioSettings
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,6 +36,7 @@ class RecordingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var recordingJob: Job? = null
     private val flacEncoder by lazy { FlacEncoder(SAMPLE_RATE) }
+    private val noiseReducer by lazy { NoiseReducer(SAMPLE_RATE) }
 
     override fun onCreate() {
         super.onCreate()
@@ -98,15 +100,25 @@ class RecordingService : Service() {
         val buffer = ShortArray(shortBufferSize)
         val audioRecord = buildRecorder(minBufferBytes)
         var currentChunk = startChunk()
+        var audioSettings = container.configRepository.getAudioSettings()
+        var refreshCounter = 0
         try {
             audioRecord.startRecording()
             while (recordingFlag.get() && !Thread.currentThread().isInterrupted) {
                 val read = audioRecord.read(buffer, 0, buffer.size)
                 if (read > 0) {
-                    currentChunk.writer.write(buffer, read)
+                    if (refreshCounter++ % 20 == 0) {
+                        audioSettings = container.configRepository.getAudioSettings()
+                    }
+                    val processed = noiseReducer.process(buffer, read)
+                    val peakLevel = peak(processed, read)
+                    if (peakLevel < audioSettings.noiseGate) {
+                        continue
+                    }
+                    currentChunk.writer.write(processed, read)
                     currentChunk.samplesWritten += read
                     if (currentChunk.samplesWritten >= SAMPLES_PER_CHUNK) {
-                        finalizeChunk(currentChunk)
+                        finalizeChunk(currentChunk, settings = audioSettings)
                         currentChunk = startChunk()
                     }
                 }
@@ -114,7 +126,7 @@ class RecordingService : Service() {
         } catch (e: SecurityException) {
             container.syncStatusStore.markError("Mic permission denied")
         } finally {
-            finalizeChunk(currentChunk, keepIfEmpty = false)
+            finalizeChunk(currentChunk, keepIfEmpty = false, settings = audioSettings)
             runCatching { audioRecord.stop() }
             audioRecord.release()
         }
@@ -153,7 +165,11 @@ class RecordingService : Service() {
         )
     }
 
-    private fun finalizeChunk(chunk: ActiveChunk, keepIfEmpty: Boolean = true) {
+    private fun finalizeChunk(
+        chunk: ActiveChunk,
+        keepIfEmpty: Boolean = true,
+        settings: AudioSettings = container.configRepository.getAudioSettings()
+    ) {
         runCatching { chunk.writer.close() }
         if (chunk.samplesWritten == 0L && !keepIfEmpty) {
             chunk.file.delete()
@@ -161,7 +177,12 @@ class RecordingService : Service() {
             return
         }
         val trimResult = runCatching {
-            SilenceTrimmer.trim(chunk.file, SAMPLE_RATE)
+            SilenceTrimmer.trim(
+                file = chunk.file,
+                sampleRate = SAMPLE_RATE,
+                threshold = settings.vadThreshold,
+                aggressiveness = settings.vadAggressiveness
+            )
         }.getOrNull()
         if (trimResult == null) {
             container.syncStatusStore.markError("Trim failed, discarding chunk")
@@ -196,6 +217,18 @@ class RecordingService : Service() {
         )
         val pending = container.chunkRepository.pendingChunks().size
         container.syncStatusStore.markSuccess("Chunk saved locally ($pending pending)")
+    }
+
+    private fun peak(buffer: ShortArray, length: Int): Float {
+        var maxAmplitude = 0
+        for (i in 0 until length) {
+            val amplitude = kotlin.math.abs(buffer[i].toInt())
+            if (amplitude > maxAmplitude) {
+                maxAmplitude = amplitude
+            }
+        }
+        if (maxAmplitude == 0) return 0f
+        return maxAmplitude / 32768f
     }
 
     private fun buildNotification(): Notification {
