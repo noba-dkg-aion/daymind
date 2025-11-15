@@ -15,6 +15,7 @@ from openai import AsyncOpenAI
 from src.stt_core.buffer_store import BufferStore
 from src.stt_core.redis_io import RedisPublisher
 
+from ..metrics import ARCHIVE_SYNC_COUNTER, ARCHIVE_SYNC_DURATION
 from ..schemas import ArchiveManifestPayload, ManifestChunk
 from ..settings import APISettings
 from .whisper_engine import WhisperEngine
@@ -75,45 +76,53 @@ class TranscriptService:
         archive_path.write_bytes(await archive_file.read())
         (archive_dir / "manifest.json").write_text(manifest_payload, encoding="utf-8")
 
-        audio, sample_rate = sf.read(str(archive_path), dtype="float32")
-        if audio.ndim > 1:
-            audio = audio.mean(axis=1)
-        pointer = 0
-        total_samples = len(audio)
-        processed = 0
+        start_time = time.perf_counter()
+        try:
+            audio, sample_rate = sf.read(str(archive_path), dtype="float32")
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)
+            pointer = 0
+            total_samples = len(audio)
+            processed = 0
 
-        for idx, chunk in enumerate(manifest.chunks):
-            samples_needed = self._samples_for_chunk(chunk, sample_rate)
-            end_pointer = pointer + samples_needed
-            if idx == len(manifest.chunks) - 1 or end_pointer > total_samples:
-                end_pointer = total_samples
-            chunk_audio = audio[pointer:end_pointer]
-            pointer = end_pointer
-            if chunk_audio.size == 0:
-                continue
-            text, _, _, final_lang, confidence = await self._transcribe_array(chunk_audio, sample_rate)
-            entry = {
-                "text": text,
-                "lang": final_lang,
-                "start": _to_epoch(chunk.session_start),
-                "end": _to_epoch(chunk.session_end),
-                "confidence": confidence,
-                "session_id": chunk.chunk_id,
-                "archive_id": manifest.archive_id,
-                "speech_segments": [
-                    {
-                        "start": _to_epoch(window.start_utc),
-                        "end": _to_epoch(window.end_utc),
-                    }
-                    for window in chunk.speech_segments
-                ],
-                "source": str(archive_path),
-            }
-            self.buffer.append(entry)
-            await self._publish(entry)
-            processed += 1
+            for idx, chunk in enumerate(manifest.chunks):
+                samples_needed = self._samples_for_chunk(chunk, sample_rate)
+                end_pointer = pointer + samples_needed
+                if idx == len(manifest.chunks) - 1 or end_pointer > total_samples:
+                    end_pointer = total_samples
+                chunk_audio = audio[pointer:end_pointer]
+                pointer = end_pointer
+                if chunk_audio.size == 0:
+                    continue
+                text, _, _, final_lang, confidence = await self._transcribe_array(chunk_audio, sample_rate)
+                entry = {
+                    "text": text,
+                    "lang": final_lang,
+                    "start": _to_epoch(chunk.session_start),
+                    "end": _to_epoch(chunk.session_end),
+                    "confidence": confidence,
+                    "session_id": chunk.chunk_id,
+                    "archive_id": manifest.archive_id,
+                    "speech_segments": [
+                        {
+                            "start": _to_epoch(window.start_utc),
+                            "end": _to_epoch(window.end_utc),
+                        }
+                        for window in chunk.speech_segments
+                    ],
+                    "source": str(archive_path),
+                }
+                self.buffer.append(entry)
+                await self._publish(entry)
+                processed += 1
 
-        return {"status": "ok", "archive_id": manifest.archive_id, "processed": processed}
+            ARCHIVE_SYNC_COUNTER.labels(status="success").inc()
+            ARCHIVE_SYNC_DURATION.observe(time.perf_counter() - start_time)
+            return {"status": "ok", "archive_id": manifest.archive_id, "processed": processed}
+        except Exception as exc:
+            ARCHIVE_SYNC_COUNTER.labels(status="error").inc()
+            ARCHIVE_SYNC_DURATION.observe(time.perf_counter() - start_time)
+            raise
 
     async def ingest_text(self, payload: Dict[str, Any]) -> float:
         payload.setdefault("ts", time.time())

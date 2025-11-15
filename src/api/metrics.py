@@ -6,7 +6,13 @@ import time
 from typing import Callable
 
 from fastapi import APIRouter, Depends, Response
-from prometheus_client import Counter, Histogram, CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import (
+    Counter,
+    Histogram,
+    Summary,
+    CONTENT_TYPE_LATEST,
+    generate_latest,
+)
 
 from .deps.auth import get_api_key
 
@@ -45,3 +51,13 @@ def instrument_app(app):
         return response
 
     return app
+ARCHIVE_SYNC_COUNTER = Counter(
+    "transcribe_archive_uploads_total",
+    "Count of /v1/transcribe/batch uploads",
+    labelnames=("status",),
+)
+
+ARCHIVE_SYNC_DURATION = Summary(
+    "transcribe_archive_processing_seconds",
+    "Time spent splitting/transcribing an archive",
+)
