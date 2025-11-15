@@ -205,6 +205,8 @@ def test_batch_transcribe_endpoint(api_client, tmp_path):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["processed"] == 2
+    assert len(body["entries"]) == 2
+    assert body["entries"][0]["text"]
     assert transcripts.exists()
     lines = [line for line in transcripts.read_text().strip().splitlines() if line]
     assert len(lines) >= 2

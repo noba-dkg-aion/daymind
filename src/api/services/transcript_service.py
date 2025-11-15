@@ -65,6 +65,7 @@ class TranscriptService:
             "confidence": confidence,
             "session_id": int(now),
             "source": str(tmp_path),
+            "chunk_id": tmp_path.stem,
         }
         if session_start:
             entry["session_start"] = session_start
@@ -89,6 +90,7 @@ class TranscriptService:
         (archive_dir / "manifest.json").write_text(manifest_payload, encoding="utf-8")
 
         start_time = time.perf_counter()
+        entries_out: list[Dict[str, Any]] = []
         try:
             audio, sample_rate = sf.read(str(archive_path), dtype="float32")
             if audio.ndim > 1:
@@ -107,30 +109,40 @@ class TranscriptService:
                 if chunk_audio.size == 0:
                     continue
                 text, _, _, final_lang, confidence = await self._transcribe_array(chunk_audio, sample_rate)
+                session_label = idx + 1
                 entry = {
                     "text": text,
                     "lang": final_lang,
                     "start": _to_epoch(chunk.session_start),
                     "end": _to_epoch(chunk.session_end),
                     "confidence": confidence,
-                    "session_id": chunk.chunk_id,
+                    "session_id": session_label,
                     "archive_id": manifest.archive_id,
                     "speech_segments": [
                         {
-                            "start": _to_epoch(window.start_utc),
-                            "end": _to_epoch(window.end_utc),
+                            "start_utc": window.start_utc.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                            "end_utc": window.end_utc.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
                         }
                         for window in chunk.speech_segments
                     ],
                     "source": str(archive_path),
+                    "session_start": chunk.session_start.isoformat().replace("+00:00", "Z"),
+                    "session_end": chunk.session_end.isoformat().replace("+00:00", "Z"),
+                    "chunk_id": chunk.chunk_id,
                 }
                 self.buffer.append(entry)
                 await self._publish(entry)
+                entries_out.append(entry)
                 processed += 1
 
             ARCHIVE_SYNC_COUNTER.labels(status="success").inc()
             ARCHIVE_SYNC_DURATION.observe(time.perf_counter() - start_time)
-            return {"status": "ok", "archive_id": manifest.archive_id, "processed": processed}
+            return {
+                "status": "ok",
+                "archive_id": manifest.archive_id,
+                "processed": processed,
+                "entries": entries_out,
+            }
         except Exception as exc:
             ARCHIVE_SYNC_COUNTER.labels(status="error").inc()
             ARCHIVE_SYNC_DURATION.observe(time.perf_counter() - start_time)

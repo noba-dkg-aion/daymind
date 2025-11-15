@@ -18,6 +18,7 @@ class TranscribeResponse(BaseModel):
     session_start: str | None = None
     session_end: str | None = None
     speech_segments: list[Dict[str, Any]] | None = None
+    chunk_id: str | None = None
 
 
 class IngestRequest(BaseModel):
@@ -106,3 +107,4 @@ class BatchTranscribeResponse(BaseModel):
     status: str = "ok"
     archive_id: str
     processed: int
+    entries: list[TranscribeResponse] = Field(default_factory=list)

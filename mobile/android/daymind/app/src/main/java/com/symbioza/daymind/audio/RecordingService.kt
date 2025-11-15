@@ -224,17 +224,6 @@ class RecordingService : Service() {
             sampleRate = SAMPLE_RATE,
             speechSegments = trimResult.segments
         )
-        val transcriptSegments = trimResult.segments.map { seg ->
-            mapOf(
-                "start_utc" to chunk.sessionStart.plusMillis(seg.startMs.toLong()).toString(),
-                "end_utc" to chunk.sessionStart.plusMillis(seg.endMs.toLong()).toString()
-            )
-        }
-        container.transcriptStore.append(
-            chunkId = metadata.id,
-            text = "Captured chunk ${metadata.id.take(6)} – transcription pending",
-            segments = transcriptSegments
-        )
         val pending = container.chunkRepository.pendingChunks().size
         container.syncStatusStore.markSuccess("Chunk saved locally ($pending pending)")
         log("Chunk saved locally ($pending pending)")

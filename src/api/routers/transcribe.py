@@ -37,6 +37,7 @@ async def transcribe_audio(
         session_start=record.get("session_start"),
         session_end=record.get("session_end"),
         speech_segments=record.get("speech_segments"),
+        chunk_id=record.get("chunk_id"),
     )
 
 

@@ -69,6 +69,7 @@ The Kivy-based DayMind companion app exposes three tabs (Record / Summary / Sett
 - **Summary** – fetches `/v1/summary?date=<today>` off the UI thread, with friendly errors and manual refresh.
 - **Privacy controls** – “Clear queue” deletes pending files; nothing runs until the user taps Start.
 - **Live audio controls** – sliders in Settings adjust the VAD threshold, WebRTC aggressiveness, and noise gate in real time so you can dial background suppression per room/device.
+- **Transcript vault & log** – Kotlin/Compose mirrors the Python ActivityLog panel and stores timestamped SRT transcripts right after each upload, so QA/share flows feel identical across clients.
 - **Aurora theme** – shared palette/typography between the landing site and client plus animated VAD-driven record control, queue badges, and snackbar variants.
 - **Visual QA hook** – run `python scripts/ui_snapshot.py --output artifacts/ui/latest` to capture Record/Summary/Settings screenshots and diff them with `artifacts/ui/reference/` before tagging builds.
 

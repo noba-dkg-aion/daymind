@@ -25,12 +25,18 @@ class TranscriptStore(context: Context) {
     private val _entries = MutableStateFlow(readEntries())
     val entriesFlow: StateFlow<List<TranscriptEntry>> = _entries.asStateFlow()
 
-    fun append(chunkId: String, text: String, segments: List<Map<String, Any>>) {
+    fun append(
+        chunkId: String,
+        text: String,
+        sessionStart: String?,
+        sessionEnd: String?,
+        segments: List<Map<String, Any>>
+    ) {
         if (text.isBlank()) return
         val entryId = UUID.randomUUID().toString()
         val timestamp = System.currentTimeMillis()
         val srtFile = File(baseDir, "$entryId.srt")
-        srtFile.writeText(buildSrt(text, segments), Charsets.UTF_8)
+        srtFile.writeText(buildSrt(text, sessionStart, sessionEnd, segments), Charsets.UTF_8)
         val summary = text.lineSequence().firstOrNull()?.take(140) ?: "(empty)"
         val json = mapOf(
             "id" to entryId,
@@ -63,13 +69,22 @@ class TranscriptStore(context: Context) {
             .sortedByDescending { it.timestamp }
     }
 
-    private fun buildSrt(text: String, segments: List<Map<String, Any>>): String {
+    private fun buildSrt(
+        text: String,
+        sessionStart: String?,
+        sessionEnd: String?,
+        segments: List<Map<String, Any>>
+    ): String {
         val lines = mutableListOf<String>()
         val formatter = DateTimeFormatter.ofPattern("HH:mm:ss,SSS", Locale.US)
-        segments.ifEmpty { listOf(mapOf("start_utc" to Instant.ofEpochMilli(System.currentTimeMillis()).toString(), "end_utc" to Instant.ofEpochMilli(System.currentTimeMillis()).toString())) }
-        segments.forEachIndexed { index, seg ->
-            val start = seg["start_utc"]?.toString()?.let { Instant.parse(it) } ?: Instant.now()
-            val end = seg["end_utc"]?.toString()?.let { Instant.parse(it) } ?: start
+        val fallbackStart = sessionStart?.let { Instant.parse(it.replace("Z", "+00:00")) } ?: Instant.now()
+        val fallbackEnd = sessionEnd?.let { Instant.parse(it.replace("Z", "+00:00")) } ?: fallbackStart
+        val spans = if (segments.isEmpty()) {
+            listOf(mapOf("start_utc" to fallbackStart.toString(), "end_utc" to fallbackEnd.toString()))
+        } else segments
+        spans.forEachIndexed { index, seg ->
+            val start = seg["start_utc"]?.toString()?.let { Instant.parse(it.replace("Z", "+00:00")) } ?: fallbackStart
+            val end = seg["end_utc"]?.toString()?.let { Instant.parse(it.replace("Z", "+00:00")) } ?: start
             lines.add((index + 1).toString())
             lines.add("${formatter.format(start.atOffset(ZoneOffset.UTC))} --> ${formatter.format(end.atOffset(ZoneOffset.UTC))}")
             lines.add(text)

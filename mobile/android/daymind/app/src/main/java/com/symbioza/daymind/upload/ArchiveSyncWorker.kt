@@ -10,12 +10,16 @@ import com.symbioza.daymind.DayMindApplication
 import com.symbioza.daymind.audio.ArchiveBuilder
 import java.io.File
 import java.time.Instant
+import java.util.UUID
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
 import retrofit2.converter.scalars.ScalarsConverterFactory
+import org.json.JSONObject
+import org.json.JSONArray
+import kotlin.collections.buildList
 
 class ArchiveSyncWorker(
     context: Context,
@@ -71,6 +75,16 @@ class ArchiveSyncWorker(
         }
 
         return if (response.isSuccessful) {
+            val bodyString = response.body()?.string()
+            if (!bodyString.isNullOrBlank()) {
+                runCatching {
+                    val json = JSONObject(bodyString)
+                    val entries = json.optJSONArray("entries")
+                    if (entries != null) {
+                        persistTranscripts(entries, container)
+                    }
+                }
+            }
             container.chunkRepository.markUploaded(pending.map { it.id })
             container.syncStatusStore.markSuccess("Synced ${pending.size} chunks", buildResult.shareableFile.absolutePath)
             container.logStore.add("Sync: uploaded archive (${pending.size} chunks)")
@@ -113,5 +127,36 @@ class ArchiveSyncWorker(
         }
 
         private fun String.ensureTrailingSlash(): String = if (endsWith('/')) this else "$this/"
+
+        private fun persistTranscripts(entries: JSONArray, container: com.symbioza.daymind.AppContainer) {
+            for (i in 0 until entries.length()) {
+                val entry = entries.optJSONObject(i) ?: continue
+                val text = entry.optString("text")
+                if (text.isNullOrBlank()) continue
+                val chunkId = entry.optString("chunk_id", UUID.randomUUID().toString())
+                val sessionStart = entry.optString("session_start", null)
+                val sessionEnd = entry.optString("session_end", null)
+                val segmentsJson = entry.optJSONArray("speech_segments") ?: JSONArray()
+                val segments = buildList<Map<String, Any>>(segmentsJson.length()) {
+                    for (j in 0 until segmentsJson.length()) {
+                        val seg = segmentsJson.optJSONObject(j) ?: continue
+                        add(
+                            mapOf(
+                                "start_utc" to seg.optString("start_utc"),
+                                "end_utc" to seg.optString("end_utc")
+                            )
+                        )
+                    }
+                }
+                container.transcriptStore.append(
+                    chunkId = chunkId,
+                    text = text,
+                    sessionStart = sessionStart,
+                    sessionEnd = sessionEnd,
+                    segments = segments
+                )
+                container.logStore.add("Transcript stored for chunk ${chunkId.take(6)}")
+            }
+        }
     }
 }
