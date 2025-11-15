@@ -2,27 +2,12 @@ package com.symbioza.daymind.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -211,6 +196,35 @@ fun RecordButton(isRecording: Boolean, onToggle: () -> Unit) {
             text = if (isRecording) "Stop capture" else "Start capture",
             color = DayMindPalette.textPrimary,
             fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun VoiceProbabilityMeter(probability: Float) {
+    val percent = (probability * 100).coerceIn(0f, 100f)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = "Voice confidence",
+            color = DayMindPalette.textSecondary,
+            fontSize = 12.sp
+        )
+        LinearProgressIndicator(
+            progress = percent / 100f,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(16.dp)),
+            color = DayMindPalette.accent,
+            trackColor = DayMindPalette.surfaceAlt
+        )
+        Text(
+            text = "${percent.toInt()}%",
+            color = DayMindPalette.textPrimary,
+            fontSize = 12.sp
         )
     }
 }

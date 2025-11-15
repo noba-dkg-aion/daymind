@@ -14,13 +14,13 @@ class NoiseReducer(
     private var prevInput = 0f
     private var prevOutput = 0f
 
-    fun process(buffer: ShortArray, length: Int): ShortArray {
+    fun process(buffer: ShortArray, length: Int, level: Float = 0.6f): ShortArray {
         val floatData = FloatArray(length)
         for (i in 0 until length) {
             floatData[i] = buffer[i].toFloat()
         }
         val filtered = highPass(floatData)
-        val gated = spectralGate(filtered)
+        val gated = spectralGate(filtered, level.coerceIn(0.2f, 1f))
         val warmup = min(length, max(1, (sampleRate * 0.01f).toInt()))
         for (i in 0 until warmup) {
             gated[i] = 0f
@@ -54,7 +54,7 @@ class NoiseReducer(
         return output
     }
 
-    private fun spectralGate(data: FloatArray): FloatArray {
+    private fun spectralGate(data: FloatArray, level: Float): FloatArray {
         val window = max(64, (sampleRate * 0.02f).toInt())
         val output = FloatArray(data.size)
         var noiseFloor = 0f
@@ -65,7 +65,7 @@ class NoiseReducer(
             if (i % window == 0) {
                 currentFloor = sqrt(noiseFloor)
             }
-            val threshold = currentFloor * 1.5f
+            val threshold = currentFloor * (1.2f + (1.2f * level))
             output[i] = if (abs(sample) <= threshold) 0f else sample
         }
         return output

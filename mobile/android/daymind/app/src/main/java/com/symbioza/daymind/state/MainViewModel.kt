@@ -35,6 +35,10 @@ data class UiState(
     val vadThreshold: Int = 3500,
     val vadAggressiveness: Int = 2,
     val noiseGate: Float = 0.12f,
+    val voiceBias: Float = 0.5f,
+    val denoiseLevel: Float = 0.6f,
+    val classifierSensitivity: Float = 0.55f,
+    val liveVoiceProbability: Float = 0f,
     val logEntries: List<String> = emptyList(),
     val transcripts: List<TranscriptSummary> = emptyList(),
     val summaryDate: String = "",
@@ -63,6 +67,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val container = (getApplication() as DayMindApplication).container
     private val audioSettingsFlow = MutableStateFlow(container.configRepository.getAudioSettings())
     private val summaryState = MutableStateFlow(SummaryUiState(date = currentUtcDate()))
+    private val voiceLevelFlow = container.recordingStateStore.voiceLevel
+    private val summaryAndVoiceFlow = combine(summaryState, voiceLevelFlow) { summary, voice ->
+        SummaryAndVoice(summary, voice)
+    }
     val snackbarFlow: SharedFlow<String> = container.logStore.events
 
     private val baseFlow = combine(
@@ -82,6 +90,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val transcriptsFlow = container.transcriptStore.entriesFlow
+    private val chunkPlaybackFlow = combine(
+        container.chunkRepository.chunkList,
+        container.chunkPlaybackManager.isPlaying
+    ) { chunks, isPlaying ->
+        ChunkPlaybackState(chunks, isPlaying)
+    }
+    private val logAndTranscriptsFlow = combine(
+        container.logStore.entries,
+        transcriptsFlow
+    ) { logs, transcripts ->
+        LogsAndTranscripts(logs, transcripts)
+    }
 
     init {
         refreshSummary()
@@ -89,23 +109,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val uiState: StateFlow<UiState> = combine(
         baseFlow,
-        container.chunkRepository.chunkList,
-        container.chunkPlaybackManager.isPlaying,
+        chunkPlaybackFlow,
         audioSettingsFlow,
-        container.logStore.entries,
-        transcriptsFlow,
-        summaryState
-    ) { base, chunks, isPlaying, audioSettings, logEntries, transcripts, summary ->
+        logAndTranscriptsFlow,
+        summaryAndVoiceFlow
+    ) { base, chunkPlayback, audioSettings, logsAndTranscripts, summaryAndVoice ->
         UiState(
             isRecording = base.isRecording,
             pendingChunks = base.pendingChunks,
             syncMessage = base.syncStatus.message,
             isSyncing = base.syncStatus.isSyncing,
             canPlayChunk = !base.latestChunkPath.isNullOrBlank(),
-            isPlayingBack = isPlaying,
+            isPlayingBack = chunkPlayback.isPlaying,
             hasArchiveToShare = !base.syncStatus.latestArchivePath.isNullOrBlank(),
             canShareChunk = !base.latestExternalPath.isNullOrBlank(),
-            chunks = chunks.map {
+            chunks = chunkPlayback.chunks.map {
                 ChunkSummary(
                     id = it.id,
                     createdAt = it.createdAt,
@@ -116,8 +134,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             vadThreshold = audioSettings.vadThreshold,
             vadAggressiveness = audioSettings.vadAggressiveness,
             noiseGate = audioSettings.noiseGate,
-            logEntries = logEntries,
-            transcripts = transcripts.map {
+            voiceBias = audioSettings.voiceBias,
+            denoiseLevel = audioSettings.denoiseLevel,
+            classifierSensitivity = audioSettings.classifierSensitivity,
+            liveVoiceProbability = voiceLevel,
+            logEntries = logsAndTranscripts.logEntries,
+            transcripts = logsAndTranscripts.transcripts.map {
                 TranscriptSummary(
                     id = it.id,
                     timestamp = it.timestamp,
@@ -127,11 +149,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     srtPath = it.srtPath
                 )
             },
-            summaryDate = summary.date,
-            summaryText = summary.text,
-            summaryUpdatedAt = summary.updatedAt,
-            summaryError = summary.error,
-            isSummaryLoading = summary.isLoading
+            summaryDate = summaryAndVoice.summary.date,
+            summaryText = summaryAndVoice.summary.text,
+            summaryUpdatedAt = summaryAndVoice.summary.updatedAt,
+            summaryError = summaryAndVoice.summary.error,
+            isSummaryLoading = summaryAndVoice.summary.isLoading,
+            liveVoiceProbability = summaryAndVoice.voiceProbability
         )
     }.stateIn(
         scope = viewModelScope,
@@ -141,7 +164,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             summaryText = summaryState.value.text,
             summaryUpdatedAt = summaryState.value.updatedAt,
             summaryError = summaryState.value.error,
-            isSummaryLoading = summaryState.value.isLoading
+            isSummaryLoading = summaryState.value.isLoading,
+            liveVoiceProbability = voiceLevelFlow.value
         )
     )
 
@@ -298,6 +322,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         container.configRepository.saveNoiseGate(clamped)
     }
 
+    fun updateVoiceBias(value: Float) {
+        val clamped = value.coerceIn(0f, 1f)
+        audioSettingsFlow.update { it.copy(voiceBias = clamped) }
+        container.configRepository.saveVoiceBias(clamped)
+    }
+
+    fun updateDenoiseLevel(value: Float) {
+        val clamped = value.coerceIn(0.2f, 1f)
+        audioSettingsFlow.update { it.copy(denoiseLevel = clamped) }
+        container.configRepository.saveDenoiseLevel(clamped)
+    }
+
+    fun updateClassifierSensitivity(value: Float) {
+        val clamped = value.coerceIn(0.3f, 0.9f)
+        audioSettingsFlow.update { it.copy(classifierSensitivity = clamped) }
+        container.configRepository.saveClassifierSensitivity(clamped)
+    }
+
     private fun log(message: String, notify: Boolean = false) {
         container.logStore.add(message, notify)
     }
@@ -321,3 +363,18 @@ private data class SummaryUiState(
 )
 
 private fun currentUtcDate(): String = LocalDate.now(ZoneOffset.UTC).toString()
+
+private data class SummaryAndVoice(
+    val summary: SummaryUiState,
+    val voiceProbability: Float
+)
+
+private data class ChunkPlaybackState(
+    val chunks: List<com.symbioza.daymind.data.ChunkMetadata>,
+    val isPlaying: Boolean
+)
+
+private data class LogsAndTranscripts(
+    val logEntries: List<String>,
+    val transcripts: List<com.symbioza.daymind.data.TranscriptEntry>
+)

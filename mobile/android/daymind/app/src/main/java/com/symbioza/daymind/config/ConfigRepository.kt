@@ -8,7 +8,10 @@ import com.symbioza.daymind.BuildConfig
 data class AudioSettings(
     val vadThreshold: Int = 3500,
     val vadAggressiveness: Int = 2,
-    val noiseGate: Float = 0.12f
+    val noiseGate: Float = 0.12f,
+    val voiceBias: Float = 0.5f,
+    val denoiseLevel: Float = 0.6f,
+    val classifierSensitivity: Float = 0.55f
 )
 
 class ConfigRepository(context: Context) {
@@ -33,7 +36,10 @@ class ConfigRepository(context: Context) {
         return AudioSettings(
             vadThreshold = encryptedPrefs?.getInt(KEY_VAD_THRESHOLD, 3500) ?: 3500,
             vadAggressiveness = encryptedPrefs?.getInt(KEY_VAD_AGGRESSIVENESS, 2) ?: 2,
-            noiseGate = encryptedPrefs?.getFloat(KEY_NOISE_GATE, 0.12f) ?: 0.12f
+            noiseGate = encryptedPrefs?.getFloat(KEY_NOISE_GATE, 0.12f) ?: 0.12f,
+            voiceBias = encryptedPrefs?.getFloat(KEY_VOICE_BIAS, 0.5f) ?: 0.5f,
+            denoiseLevel = encryptedPrefs?.getFloat(KEY_DENOISE_LEVEL, 0.6f) ?: 0.6f,
+            classifierSensitivity = encryptedPrefs?.getFloat(KEY_CLASSIFIER_SENS, 0.55f) ?: 0.55f
         )
     }
 
@@ -47,6 +53,18 @@ class ConfigRepository(context: Context) {
 
     fun saveNoiseGate(value: Float) {
         encryptedPrefs?.edit()?.putFloat(KEY_NOISE_GATE, value)?.apply()
+    }
+
+    fun saveVoiceBias(value: Float) {
+        encryptedPrefs?.edit()?.putFloat(KEY_VOICE_BIAS, value)?.apply()
+    }
+
+    fun saveDenoiseLevel(value: Float) {
+        encryptedPrefs?.edit()?.putFloat(KEY_DENOISE_LEVEL, value)?.apply()
+    }
+
+    fun saveClassifierSensitivity(value: Float) {
+        encryptedPrefs?.edit()?.putFloat(KEY_CLASSIFIER_SENS, value)?.apply()
     }
 
     private fun readOrDefault(key: String, defaultValue: String): String {
@@ -69,5 +87,8 @@ class ConfigRepository(context: Context) {
         private const val KEY_VAD_THRESHOLD = "VAD_THRESHOLD"
         private const val KEY_VAD_AGGRESSIVENESS = "VAD_AGGRESSIVENESS"
         private const val KEY_NOISE_GATE = "NOISE_GATE"
+        private const val KEY_VOICE_BIAS = "VOICE_BIAS"
+        private const val KEY_DENOISE_LEVEL = "DENOISE_LEVEL"
+        private const val KEY_CLASSIFIER_SENS = "CLASSIFIER_SENSITIVITY"
     }
 }

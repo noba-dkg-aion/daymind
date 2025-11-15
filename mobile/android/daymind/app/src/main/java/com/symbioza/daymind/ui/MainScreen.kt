@@ -49,6 +49,7 @@ import com.symbioza.daymind.ui.components.RecordButton
 import com.symbioza.daymind.ui.components.SecondaryButton
 import com.symbioza.daymind.ui.components.SectionCard
 import com.symbioza.daymind.ui.components.StatusBadge
+import com.symbioza.daymind.ui.components.VoiceProbabilityMeter
 import com.symbioza.daymind.ui.theme.DayMindPalette
 import java.io.File
 import java.text.SimpleDateFormat
@@ -73,6 +74,9 @@ fun DayMindScreen(
     onThresholdChange: (Float) -> Unit,
     onAggressivenessChange: (Float) -> Unit,
     onNoiseGateChange: (Float) -> Unit,
+    onVoiceBiasChange: (Float) -> Unit,
+    onDenoiseLevelChange: (Float) -> Unit,
+    onClassifierSensitivityChange: (Float) -> Unit,
     onRefreshSummary: () -> Unit
 ) {
     var previewTranscript by remember { mutableStateOf<TranscriptSummary?>(null) }
@@ -119,9 +123,15 @@ fun DayMindScreen(
                     vadThreshold = state.vadThreshold,
                     vadAggressiveness = state.vadAggressiveness,
                     noiseGate = state.noiseGate,
+                    voiceBias = state.voiceBias,
+                    denoiseLevel = state.denoiseLevel,
+                    classifierSensitivity = state.classifierSensitivity,
                     onThresholdChange = onThresholdChange,
                     onAggressivenessChange = onAggressivenessChange,
-                    onNoiseGateChange = onNoiseGateChange
+                    onNoiseGateChange = onNoiseGateChange,
+                    onVoiceBiasChange = onVoiceBiasChange,
+                    onDenoiseLevelChange = onDenoiseLevelChange,
+                    onClassifierSensitivityChange = onClassifierSensitivityChange
                 )
             }
         }
@@ -146,6 +156,7 @@ private fun RecordSection(
         subtitle = "Single tap capture with Whisper + VAD energy feedback."
     ) {
         RecordButton(isRecording = state.isRecording, onToggle = onToggleRecording)
+        VoiceProbabilityMeter(probability = state.liveVoiceProbability)
         QueueBadge(pending = state.pendingChunks)
         StatusBadge(
             icon = Icons.Outlined.Mic,
@@ -375,7 +386,13 @@ private fun SettingsSection(
     noiseGate: Float,
     onThresholdChange: (Float) -> Unit,
     onAggressivenessChange: (Float) -> Unit,
-    onNoiseGateChange: (Float) -> Unit
+    onNoiseGateChange: (Float) -> Unit,
+    voiceBias: Float,
+    denoiseLevel: Float,
+    classifierSensitivity: Float,
+    onVoiceBiasChange: (Float) -> Unit,
+    onDenoiseLevelChange: (Float) -> Unit,
+    onClassifierSensitivityChange: (Float) -> Unit
 ) {
     SectionCard(
         title = "Audio sensitivity",
@@ -385,9 +402,15 @@ private fun SettingsSection(
             vadThreshold = vadThreshold,
             vadAggressiveness = vadAggressiveness,
             noiseGate = noiseGate,
+            voiceBias = voiceBias,
+            denoiseLevel = denoiseLevel,
+            classifierSensitivity = classifierSensitivity,
             onThresholdChange = onThresholdChange,
             onAggressivenessChange = onAggressivenessChange,
-            onNoiseGateChange = onNoiseGateChange
+            onNoiseGateChange = onNoiseGateChange,
+            onVoiceBiasChange = onVoiceBiasChange,
+            onDenoiseLevelChange = onDenoiseLevelChange,
+            onClassifierSensitivityChange = onClassifierSensitivityChange
         )
     }
 }
@@ -459,9 +482,15 @@ private fun AudioSensitivitySection(
     vadThreshold: Int,
     vadAggressiveness: Int,
     noiseGate: Float,
+    voiceBias: Float,
+    denoiseLevel: Float,
+    classifierSensitivity: Float,
     onThresholdChange: (Float) -> Unit,
     onAggressivenessChange: (Float) -> Unit,
-    onNoiseGateChange: (Float) -> Unit
+    onNoiseGateChange: (Float) -> Unit,
+    onVoiceBiasChange: (Float) -> Unit,
+    onDenoiseLevelChange: (Float) -> Unit,
+    onClassifierSensitivityChange: (Float) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -490,6 +519,33 @@ private fun AudioSensitivitySection(
                 value = noiseGate,
                 onValueChange = onNoiseGateChange,
                 valueRange = 0f..0.6f
+            )
+        }
+        Column {
+            Text("Voice bias: ${"%.0f".format(voiceBias * 100)}%", color = DayMindPalette.textSecondary)
+            androidx.compose.material3.Slider(
+                value = voiceBias,
+                onValueChange = onVoiceBiasChange,
+                valueRange = 0f..1f
+            )
+        }
+        Column {
+            Text("Denoise level: ${"%.0f".format(denoiseLevel * 100)}%", color = DayMindPalette.textSecondary)
+            androidx.compose.material3.Slider(
+                value = denoiseLevel,
+                onValueChange = onDenoiseLevelChange,
+                valueRange = 0.2f..1f
+            )
+        }
+        Column {
+            Text(
+                "Voice-only threshold: ${"%.0f".format(classifierSensitivity * 100)}%",
+                color = DayMindPalette.textSecondary
+            )
+            androidx.compose.material3.Slider(
+                value = classifierSensitivity,
+                onValueChange = onClassifierSensitivityChange,
+                valueRange = 0.3f..0.9f
             )
         }
     }

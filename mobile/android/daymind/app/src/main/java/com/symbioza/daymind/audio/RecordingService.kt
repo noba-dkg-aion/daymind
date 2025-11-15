@@ -36,7 +36,7 @@ class RecordingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var recordingJob: Job? = null
     private val flacEncoder by lazy { FlacEncoder(SAMPLE_RATE) }
-    private val noiseReducer by lazy { NoiseReducer(SAMPLE_RATE) }
+    private val voicePipeline by lazy { VoiceProcessingPipeline(SAMPLE_RATE) }
 
     override fun onCreate() {
         super.onCreate()
@@ -105,6 +105,7 @@ class RecordingService : Service() {
         var currentChunk = startChunk()
         var audioSettings = container.configRepository.getAudioSettings()
         var refreshCounter = 0
+        var skippedFrames = 0
         try {
             audioRecord.startRecording()
             log("Recorder active")
@@ -114,7 +115,18 @@ class RecordingService : Service() {
                     if (refreshCounter++ % 20 == 0) {
                         audioSettings = container.configRepository.getAudioSettings()
                     }
-                    val processed = noiseReducer.process(buffer, read)
+                    val pipelineResult = voicePipeline.process(buffer, read, audioSettings)
+                    container.recordingStateStore.updateVoiceLevel(pipelineResult.voiceProbability)
+                    if (pipelineResult.shouldSkip) {
+                        skippedFrames++
+                        if (skippedFrames % 40 == 0) {
+                            log("Frame skipped (voice prob ${"%.2f".format(pipelineResult.voiceProbability)})")
+                        }
+                        continue
+                    } else if (skippedFrames > 0) {
+                        skippedFrames = 0
+                    }
+                    val processed = pipelineResult.processed
                     val peakLevel = peak(processed, read)
                     if (peakLevel < audioSettings.noiseGate) {
                         log("Chunk discarded (noise gate)")

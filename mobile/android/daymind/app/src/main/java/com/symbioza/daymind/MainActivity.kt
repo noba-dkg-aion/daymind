@@ -76,6 +76,9 @@ class MainActivity : ComponentActivity() {
                     onThresholdChange = viewModel::updateVadThreshold,
                     onAggressivenessChange = viewModel::updateVadAggressiveness,
                     onNoiseGateChange = viewModel::updateNoiseGate,
+                    onVoiceBiasChange = viewModel::updateVoiceBias,
+                    onDenoiseLevelChange = viewModel::updateDenoiseLevel,
+                    onClassifierSensitivityChange = viewModel::updateClassifierSensitivity,
                     onRefreshSummary = { viewModel.refreshSummary(force = true) }
                 )
             }
