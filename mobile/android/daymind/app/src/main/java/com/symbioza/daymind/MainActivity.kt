@@ -43,9 +43,10 @@ class MainActivity : ComponentActivity() {
                             permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     },
-                    onRetryUploads = viewModel::retryUploads,
+                    onSync = viewModel::syncNow,
                     onPlayLastChunk = viewModel::playLatestChunk,
-                    onStopPlayback = viewModel::stopPlayback
+                    onStopPlayback = viewModel::stopPlayback,
+                    onShareArchive = viewModel::shareArchive
                 )
             }
         }

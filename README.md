@@ -63,6 +63,7 @@ Full request/response contracts live in [`API_REFERENCE.md`](API_REFERENCE.md).
 The Kivy-based DayMind companion app exposes three tabs (Record / Summary / Settings) with an offline queue, exponential retries, and an in-app log window. Highlights:
 
 - **Recording toggle + indicator** – 6 s WAV chunks saved privately, queued, and retried in the background.
+- **Manual sync + FLAC archive** – tap **Sync Now** to concatenate pending chunks, encode them into a FLAC archive, and upload/share on demand (no auto upload every few seconds).
 - **Settings** – persists Server URL + API Key; “Test connection” calls `/healthz` and logs the result.
 - **Summary** – fetches `/v1/summary?date=<today>` off the UI thread, with friendly errors and manual refresh.
 - **Privacy controls** – “Clear queue” deletes pending files; nothing runs until the user taps Start.

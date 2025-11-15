@@ -3,17 +3,27 @@ package com.symbioza.daymind.data
 import android.content.Context
 import com.symbioza.daymind.audio.SpeechSegment
 import java.io.File
+import java.time.Instant
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 
 class ChunkRepository(context: Context) {
-    private val chunksDir: File = File(context.cacheDir, "chunks").apply { mkdirs() }
-    private val _pendingCount = MutableStateFlow(calculatePending())
+    private val chunksDir: File = File(context.cacheDir, "vault").apply { mkdirs() }
+    private val manifestFile = File(chunksDir, "chunks_manifest.json")
+    private val _pendingCount = MutableStateFlow(0)
     val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
-    private val _latestChunkPath = MutableStateFlow(findLatestChunkPath())
+    private val _latestChunkPath = MutableStateFlow<String?>(null)
     val latestChunkPath: StateFlow<String?> = _latestChunkPath.asStateFlow()
+    private val manifest: MutableList<ChunkMetadata> = loadManifest()
+
+    init {
+        refresh()
+    }
 
     fun newChunkFile(): File {
         val chunkFile = File(chunksDir, "chunk_${System.currentTimeMillis()}_${UUID.randomUUID()}.wav")
@@ -24,55 +34,112 @@ class ChunkRepository(context: Context) {
         return chunkFile
     }
 
-    fun listChunkFiles(): List<File> {
-        return chunksDir
-            .listFiles { file -> file.extension.equals("wav", ignoreCase = true) }
-            ?.sortedBy { it.name }
-            ?: emptyList()
+    fun registerChunk(
+        file: File,
+        sessionStart: Instant,
+        durationMs: Long,
+        sampleRate: Int,
+        speechSegments: List<SpeechSegment>
+    ) {
+        val data = ChunkMetadata(
+            id = UUID.randomUUID().toString(),
+            filePath = file.absolutePath,
+            sessionStartUtc = sessionStart.toString(),
+            createdAt = System.currentTimeMillis(),
+            durationMs = durationMs,
+            sampleRate = sampleRate,
+            uploaded = false,
+            speechSegments = speechSegments.map { SpeechSegmentJson(it.startMs, it.endMs) }
+        )
+        manifest.add(data)
+        persistManifest()
+        refresh()
     }
 
-    fun deleteChunk(file: File) {
-        if (file.exists()) {
-            file.delete()
+    fun markUploaded(ids: List<String>) {
+        if (ids.isEmpty()) return
+        manifest.replaceAll { meta ->
+            if (ids.contains(meta.id)) meta.copy(uploaded = true) else meta
         }
-        metadataFile(file).delete()
+        persistManifest()
         refresh()
     }
 
-    fun markChunkQueued() {
-        refresh()
-    }
+    fun pendingChunks(): List<ChunkMetadata> = manifest.filter { !it.uploaded }.sortedBy { it.createdAt }
+
+    fun getManifestSnapshot(): List<ChunkMetadata> = manifest.toList()
 
     fun refresh() {
-        _pendingCount.value = calculatePending()
-        _latestChunkPath.value = findLatestChunkPath()
+        _pendingCount.value = manifest.count { !it.uploaded }
+        _latestChunkPath.value = manifest.maxByOrNull { it.createdAt }?.filePath
     }
 
-    fun saveSpeechSegments(file: File, segments: List<SpeechSegment>) {
-        val json = buildString {
-            append("{\"segments\":[")
-            segments.forEachIndexed { index, segment ->
-                append("{\"start_ms\":${segment.startMs},\"end_ms\":${segment.endMs}}")
-                if (index < segments.lastIndex) append(',')
+    fun archiveDirectory(): File = File(chunksDir, "archives").apply { mkdirs() }
+
+    private fun persistManifest() {
+        val json = JSONArray()
+        manifest.forEach { meta ->
+            val obj = JSONObject().apply {
+                put("id", meta.id)
+                put("file_path", meta.filePath)
+                put("session_start", meta.sessionStartUtc)
+                put("created_at", meta.createdAt)
+                put("duration_ms", meta.durationMs)
+                put("sample_rate", meta.sampleRate)
+                put("uploaded", meta.uploaded)
+                put(
+                    "speech_segments",
+                    JSONArray().apply {
+                        meta.speechSegments.forEach { segment ->
+                            put(
+                                JSONObject().apply {
+                                    put("start_ms", segment.startMs)
+                                    put("end_ms", segment.endMs)
+                                }
+                            )
+                        }
+                    }
+                )
             }
-            append("]}")
+            json.put(obj)
         }
-        metadataFile(file).writeText(json)
+        manifestFile.writeText(json.toString())
     }
 
-    fun loadSpeechSegmentsJson(file: File): String? {
-        val metadata = metadataFile(file)
-        if (!metadata.exists()) return null
-        return metadata.readText()
-    }
-
-    private fun calculatePending(): Int = listChunkFiles().size
-
-    private fun findLatestChunkPath(): String? {
-        return listChunkFiles().maxByOrNull { it.lastModified() }?.absolutePath
-    }
-
-    private fun metadataFile(file: File): File {
-        return File(file.absolutePath + ".segments.json")
+    private fun loadManifest(): MutableList<ChunkMetadata> {
+        if (!manifestFile.exists()) return mutableListOf()
+        return runCatching {
+            val array = JSONArray(manifestFile.readText())
+            buildList {
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    val segments = obj.getJSONArray("speech_segments").let { segArray ->
+                        buildList {
+                            for (j in 0 until segArray.length()) {
+                                val seg = segArray.getJSONObject(j)
+                                add(
+                                    SpeechSegmentJson(
+                                        startMs = seg.getLong("start_ms"),
+                                        endMs = seg.getLong("end_ms")
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    add(
+                        ChunkMetadata(
+                            id = obj.getString("id"),
+                            filePath = obj.getString("file_path"),
+                            sessionStartUtc = obj.getString("session_start"),
+                            createdAt = obj.optLong("created_at", System.currentTimeMillis()),
+                            durationMs = obj.getLong("duration_ms"),
+                            sampleRate = obj.getInt("sample_rate"),
+                            uploaded = obj.optBoolean("uploaded", false),
+                            speechSegments = segments
+                        )
+                    )
+                }
+            }.toMutableList()
+        }.getOrElse { mutableListOf() }
     }
 }

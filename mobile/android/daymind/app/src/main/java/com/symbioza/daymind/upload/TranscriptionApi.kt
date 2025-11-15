@@ -20,3 +20,12 @@ interface TranscriptionApi {
         @Part("speech_segments") speechSegments: RequestBody?
     ): Response<ResponseBody>
 }
+
+interface ArchiveTranscriptionApi {
+    @Multipart
+    @POST("v1/transcribe/batch")
+    suspend fun uploadArchive(
+        @Part archive: MultipartBody.Part,
+        @Part("manifest") manifest: RequestBody
+    ): Response<ResponseBody>
+}
