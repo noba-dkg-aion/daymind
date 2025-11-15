@@ -28,10 +28,12 @@ class ArchiveSyncWorker(
         val pending = container.chunkRepository.pendingChunks()
         if (pending.isEmpty()) {
             container.syncStatusStore.markSuccess("Nothing to sync")
+            container.logStore.add("Sync: nothing to upload")
             return Result.success()
         }
 
         container.syncStatusStore.markInProgress("Building archive...")
+        container.logStore.add("Sync: building archive for ${pending.size} chunks")
         val archiveDir = container.chunkRepository.archiveDirectory()
         val builder = ArchiveBuilder(applicationContext)
         val buildResult = runCatching { builder.buildArchive(pending, archiveDir) }
@@ -64,15 +66,18 @@ class ArchiveSyncWorker(
             )
         }.getOrElse {
             container.syncStatusStore.markError(it.message ?: "Upload error")
+            container.logStore.add("Sync error: ${it.message}")
             return Result.retry()
         }
 
         return if (response.isSuccessful) {
             container.chunkRepository.markUploaded(pending.map { it.id })
             container.syncStatusStore.markSuccess("Synced ${pending.size} chunks", buildResult.shareableFile.absolutePath)
+            container.logStore.add("Sync: uploaded archive (${pending.size} chunks)")
             Result.success()
         } else {
             container.syncStatusStore.markError("Sync failed ${response.code()}")
+            container.logStore.add("Sync failed ${response.code()}")
             Result.retry()
         }
     }

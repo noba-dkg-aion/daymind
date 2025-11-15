@@ -54,7 +54,7 @@ class ChunkRepository(private val context: Context) {
         durationMs: Long,
         sampleRate: Int,
         speechSegments: List<SpeechSegment>
-    ) {
+    ): ChunkMetadata {
         val publicPath = externalPath ?: externalStore.save(file, sessionStart.toEpochMilli())
         val data = ChunkMetadata(
             id = UUID.randomUUID().toString(),
@@ -70,6 +70,7 @@ class ChunkRepository(private val context: Context) {
         manifest.add(data)
         persistManifest()
         refresh()
+        return data
     }
 
     fun markUploaded(ids: List<String>) {

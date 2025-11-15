@@ -65,6 +65,7 @@ class RecordingService : Service() {
         recordingFlag.set(true)
         startForeground(NOTIFICATION_ID, buildNotification())
         container.recordingStateStore.markRecording()
+        log("Recorder starting")
         recordingJob = serviceScope.launch {
             recordContinuously()
         }
@@ -82,6 +83,7 @@ class RecordingService : Service() {
         }
         stopSelf()
         container.recordingStateStore.markStopped()
+        log("Recorder stopped")
     }
 
     private suspend fun recordContinuously() = withContext(Dispatchers.IO) {
@@ -92,6 +94,7 @@ class RecordingService : Service() {
         )
         if (minBufferBytes == AudioRecord.ERROR || minBufferBytes == AudioRecord.ERROR_BAD_VALUE) {
             container.syncStatusStore.markError("AudioRecord unavailable")
+            log("AudioRecord unavailable")
             stopRecording()
             return@withContext
         }
@@ -104,6 +107,7 @@ class RecordingService : Service() {
         var refreshCounter = 0
         try {
             audioRecord.startRecording()
+            log("Recorder active")
             while (recordingFlag.get() && !Thread.currentThread().isInterrupted) {
                 val read = audioRecord.read(buffer, 0, buffer.size)
                 if (read > 0) {
@@ -113,6 +117,7 @@ class RecordingService : Service() {
                     val processed = noiseReducer.process(buffer, read)
                     val peakLevel = peak(processed, read)
                     if (peakLevel < audioSettings.noiseGate) {
+                        log("Chunk discarded (noise gate)")
                         continue
                     }
                     currentChunk.writer.write(processed, read)
@@ -125,6 +130,7 @@ class RecordingService : Service() {
             }
         } catch (e: SecurityException) {
             container.syncStatusStore.markError("Mic permission denied")
+            log("Mic permission denied")
         } finally {
             finalizeChunk(currentChunk, keepIfEmpty = false, settings = audioSettings)
             runCatching { audioRecord.stop() }
@@ -186,6 +192,7 @@ class RecordingService : Service() {
         }.getOrNull()
         if (trimResult == null) {
             container.syncStatusStore.markError("Trim failed, discarding chunk")
+            log("Trim failed; chunk discarded")
             chunk.file.delete()
             container.chunkRepository.refresh()
             return
@@ -194,6 +201,7 @@ class RecordingService : Service() {
             chunk.file.delete()
             container.chunkRepository.refresh()
             container.syncStatusStore.markSuccess("Silent chunk skipped")
+            log("Silent chunk skipped")
             return
         }
         val flacFile = File(chunk.file.parentFile, chunk.file.nameWithoutExtension + ".flac")
@@ -201,13 +209,14 @@ class RecordingService : Service() {
             flacEncoder.encode(trimResult.samples, flacFile)
         }.onFailure {
             container.syncStatusStore.markError("FLAC encode failed: ${it.message}")
+            log("FLAC encode failed: ${it.message}")
             chunk.file.delete()
             container.chunkRepository.refresh()
             return
         }
         chunk.file.delete()
         val durationMs = (trimResult.keptSamples * 1000L) / SAMPLE_RATE
-        container.chunkRepository.registerChunk(
+        val metadata = container.chunkRepository.registerChunk(
             file = flacFile,
             externalPath = null,
             sessionStart = chunk.sessionStart,
@@ -215,8 +224,20 @@ class RecordingService : Service() {
             sampleRate = SAMPLE_RATE,
             speechSegments = trimResult.segments
         )
+        val transcriptSegments = trimResult.segments.map { seg ->
+            mapOf(
+                "start_utc" to chunk.sessionStart.plusMillis(seg.startMs.toLong()).toString(),
+                "end_utc" to chunk.sessionStart.plusMillis(seg.endMs.toLong()).toString()
+            )
+        }
+        container.transcriptStore.append(
+            chunkId = metadata.id,
+            text = "Captured chunk ${metadata.id.take(6)} – transcription pending",
+            segments = transcriptSegments
+        )
         val pending = container.chunkRepository.pendingChunks().size
         container.syncStatusStore.markSuccess("Chunk saved locally ($pending pending)")
+        log("Chunk saved locally ($pending pending)")
     }
 
     private fun peak(buffer: ShortArray, length: Int): Float {
@@ -229,6 +250,10 @@ class RecordingService : Service() {
         }
         if (maxAmplitude == 0) return 0f
         return maxAmplitude / 32768f
+    }
+
+    private fun log(message: String) {
+        container.logStore.add(message)
     }
 
     private fun buildNotification(): Notification {

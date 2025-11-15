@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.symbioza.daymind.state.ChunkSummary
 import com.symbioza.daymind.state.UiState
+import com.symbioza.daymind.state.TranscriptSummary
 import com.symbioza.daymind.ui.components.DMScaffold
 import com.symbioza.daymind.ui.components.InfoBanner
 import com.symbioza.daymind.ui.components.PrimaryButton
@@ -45,6 +46,7 @@ fun DayMindScreen(
     onStopPlayback: () -> Unit,
     onShareArchive: () -> Unit,
     onShareChunk: (ChunkSummary) -> Unit,
+    onShareTranscript: (TranscriptSummary) -> Unit,
     onThresholdChange: (Float) -> Unit,
     onAggressivenessChange: (Float) -> Unit,
     onNoiseGateChange: (Float) -> Unit
@@ -76,6 +78,12 @@ fun DayMindScreen(
             }
             item {
                 ChunkVaultSection(state = state, onShareChunk = onShareChunk)
+            }
+            item {
+                TranscriptSection(state = state, onShareTranscript = onShareTranscript)
+            }
+            item {
+                ActivityLogSection(entries = state.logEntries)
             }
             item {
                 SettingsSection(
@@ -168,6 +176,54 @@ private fun ChunkVaultSection(state: UiState, onShareChunk: (ChunkSummary) -> Un
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 state.chunks.take(6).forEach { chunk ->
                     ChunkRow(chunk = chunk, onShare = onShareChunk)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranscriptSection(state: UiState, onShareTranscript: (TranscriptSummary) -> Unit) {
+    SectionCard(
+        title = "Transcripts",
+        subtitle = "Latest Whisper captures with timestamped SRT export."
+    ) {
+        if (state.transcripts.isEmpty()) {
+            Text("No transcripts yet.", color = DayMindPalette.textSecondary)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                state.transcripts.take(5).forEach { transcript ->
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = transcript.summary,
+                            color = DayMindPalette.textPrimary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Chunk ${transcript.chunkId.take(6)}",
+                            color = DayMindPalette.textMuted,
+                            fontSize = 12.sp
+                        )
+                        SecondaryButton(text = "Share transcript") { onShareTranscript(transcript) }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActivityLogSection(entries: List<String>) {
+    SectionCard(
+        title = "Activity log",
+        subtitle = "Live status messages from recorder, queue, and uploader."
+    ) {
+        if (entries.isEmpty()) {
+            Text("No events yet.", color = DayMindPalette.textSecondary)
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                entries.take(12).forEach { line ->
+                    Text(text = line, color = DayMindPalette.textSecondary, fontSize = 12.sp)
                 }
             }
         }

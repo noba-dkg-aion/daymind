@@ -70,7 +70,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    private val transcriptsFlow = MutableStateFlow(container.transcriptStore.entries())
+    private val transcriptsFlow = container.transcriptStore.entriesFlow
 
     val uiState: StateFlow<UiState> = combine(
         baseFlow,
@@ -136,6 +136,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun syncNow() {
         container.enqueueManualSync()
+        log("Manual sync triggered")
     }
 
     fun shareArchive() {
@@ -156,6 +157,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share DayMind archive")
         )
+        log("Shared archive ${file.name}")
     }
 
     fun shareLastChunk() {
@@ -176,6 +178,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share latest chunk")
         )
+        log("Shared latest chunk")
     }
 
     fun shareChunk(summary: ChunkSummary) {
@@ -195,6 +198,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         getApplication<Application>().startActivity(
             Intent.createChooser(intent, "Share chunk")
         )
+        log("Shared chunk ${summary.id.take(6)}")
+    }
+
+    fun shareTranscript(summary: TranscriptSummary) {
+        val file = File(summary.srtPath)
+        if (!file.exists()) return
+        val uri = FileProvider.getUriForFile(
+            getApplication(),
+            "${getApplication<Application>().packageName}.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "DayMind transcript ${summary.chunkId}")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        getApplication<Application>().startActivity(
+            Intent.createChooser(intent, "Share transcript")
+        )
+        log("Shared transcript ${summary.id.take(6)}")
     }
 
     fun updateVadThreshold(value: Float) {
@@ -209,10 +234,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         container.configRepository.saveVadAggressiveness(rounded)
     }
 
-fun updateNoiseGate(value: Float) {
+    fun updateNoiseGate(value: Float) {
         val clamped = value.coerceIn(0f, 0.6f)
         audioSettingsFlow.update { it.copy(noiseGate = clamped) }
         container.configRepository.saveNoiseGate(clamped)
+    }
+
+    private fun log(message: String) {
+        container.logStore.add(message)
     }
 }
 

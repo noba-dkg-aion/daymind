@@ -7,6 +7,9 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 data class TranscriptEntry(
     val id: String,
@@ -19,6 +22,8 @@ data class TranscriptEntry(
 class TranscriptStore(context: Context) {
     private val baseDir = File(context.filesDir, "transcripts").apply { mkdirs() }
     private val listFile = File(baseDir, "transcripts.jsonl")
+    private val _entries = MutableStateFlow(readEntries())
+    val entriesFlow: StateFlow<List<TranscriptEntry>> = _entries.asStateFlow()
 
     fun append(chunkId: String, text: String, segments: List<Map<String, Any>>) {
         if (text.isBlank()) return
@@ -35,9 +40,12 @@ class TranscriptStore(context: Context) {
             "srt_path" to srtFile.absolutePath
         )
         listFile.appendText("${serialize(json)}\n", Charsets.UTF_8)
+        _entries.value = readEntries()
     }
 
-    fun entries(): List<TranscriptEntry> {
+    fun entries(): List<TranscriptEntry> = _entries.value
+
+    private fun readEntries(): List<TranscriptEntry> {
         if (!listFile.exists()) return emptyList()
         return listFile.readLines(Charsets.UTF_8)
             .mapNotNull { line ->
