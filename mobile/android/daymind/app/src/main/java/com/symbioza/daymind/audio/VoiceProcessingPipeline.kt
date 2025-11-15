@@ -191,7 +191,7 @@ private class HarmonicDetector(private val sampleRate: Int) {
         if (size <= maxLag) return 0f
         var best = 0f
         val normalized = FloatArray(size) { samples[it] / 32768f }
-        val energy = normalized.sumOf { it * it }.toFloat().coerceAtLeast(1e-6f)
+        val energy = normalized.sumOf { (it * it).toDouble() }.toFloat().coerceAtLeast(1e-6f)
         for (lag in minLag..maxLag) {
             var sum = 0f
             var count = 0
