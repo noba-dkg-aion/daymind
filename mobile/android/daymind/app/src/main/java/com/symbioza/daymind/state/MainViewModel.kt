@@ -137,7 +137,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             voiceBias = audioSettings.voiceBias,
             denoiseLevel = audioSettings.denoiseLevel,
             classifierSensitivity = audioSettings.classifierSensitivity,
-            liveVoiceProbability = voiceLevel,
             logEntries = logsAndTranscripts.logEntries,
             transcripts = logsAndTranscripts.transcripts.map {
                 TranscriptSummary(
