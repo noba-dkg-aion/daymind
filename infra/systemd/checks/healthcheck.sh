@@ -42,6 +42,13 @@ for service in "${services[@]}"; do
 done
 
 APP_PORT="${APP_PORT:-8000}"
+API_KEY_HEADER="${HEALTHCHECK_API_KEY:-}"
+if [ -z "$API_KEY_HEADER" ] && [ -n "${API_KEY:-}" ]; then
+  API_KEY_HEADER="${API_KEY}"
+fi
+if [ -z "$API_KEY_HEADER" ] && [ -n "${API_KEYS:-}" ]; then
+  API_KEY_HEADER="${API_KEYS%%,*}"
+fi
 echo "Checking HTTP endpoints on port ${APP_PORT}"
 
 # Retry logic for HTTP endpoints
@@ -50,9 +57,13 @@ check_endpoint() {
   local label="$2"
   local max_attempts=10
   local attempt=1
+  local curl_opts=("-fsS")
+  if [ -n "$API_KEY_HEADER" ]; then
+    curl_opts+=("-H" "X-API-Key: ${API_KEY_HEADER}")
+  fi
   
   while [ $attempt -le $max_attempts ]; do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    if curl "${curl_opts[@]}" "$url" >/dev/null 2>&1; then
       echo "✅ $label responded"
       return 0
     fi
