@@ -23,19 +23,20 @@ Launch the DayMind Alpha app on the device.
 | 1 | Tap **Record** | Foreground notification “DayMind is recording…” appears and service stays alive. |
 | 2 | Wait ~6 s | A WAV chunk appears under `cacheDir/chunks/` (verify via `adb shell ls /storage/.../cache/chunks`). |
 | 3 | Tap **Play Last Chunk** | Trimmed clip plays locally (button label switches to **Stop Playback**) and stops automatically after playback. |
-| 4 | Ensure network is ON | Chunk upload job runs automatically; status message becomes “Uploaded ...”. |
-| 5 | Toggle network OFF | Chunk file remains; queue shows “Waiting for network”/upload status persists. |
-| 6 | Restore network | WorkManager retries and uploads chunk automatically; file deleted after 200 response. |
-| 7 | Set invalid API key | `/v1/transcribe` returns 401/403, upload status shows auth error, chunk remains queued. |
-| 8 | Tap **Stop Recording** | Foreground service stops without crash; no new chunks created afterward. |
-| 9 | Re-open app | Pending chunks automatically enqueued (UploadStatus shows resumed/Retry). |
-|10 | Check server logs | `/v1/transcribe` receives multipart form data with `file=@chunk.wav`, plus `session_ts`, `device_id`, `sample_rate`, `format`. |
-|11 | Inspect backend | `data/ledger.jsonl` gains a new transcript line timestamped from the chunk session. |
-|12 | Inspect metadata | Optional `speech_segments` payload arrives with `{start_ms,end_ms}` windows matching the periods where speech was detected (verify by pausing/muting during parts of the recording). |
+| 4 | Record ~1 min (with pauses) | Pending counter increases; **Sync Now** stays enabled. |
+| 5 | Tap **Sync Now** | Button shows “Syncing…”, pending counter drops to 0, status text reads “Synced N chunks”. |
+| 6 | Check archive location | `Android/data/com.symbioza.daymind/files/Music/archive_*.flac` exists; manifest JSON sits in `cache/vault/archives/`. |
+| 7 | Tap **Share Archive** | Android share sheet appears, FLAC opens in another audio app (or is shareable via Drive/Telegram/etc.). |
+| 8 | Toggle network OFF | Tap **Sync Now**; expect failure + retry messaging (nothing uploads). |
+| 9 | Restore network & sync | Tap **Sync Now** again; response succeeds. |
+|10 | Tap **Stop Recording** | Foreground service stops without crash; no new chunks created afterward. |
+|11 | Re-open app | Pending chunks remain 0; **Share Archive** still works for the last FLAC. |
+|12 | Check server logs | `/v1/transcribe/batch` receives `archive=@*.flac` and `manifest` JSON. |
+|13 | Inspect backend | `data/ledger.jsonl` gains transcript lines for every chunk in the archive; manifest `speech_segments[].start_utc/end_utc` align with pauses you introduced. |
 
 ### 4. Reliability & Edge Cases
 - Repeat Record/Stop sequence 5×; verify no crashes, no duplicate chunks, and UI remains responsive.
-- Simulate airplane mode mid-recording; after reconnect, WorkManager retries until upload succeeds.
+- Simulate airplane mode mid-recording; **Sync Now** should fail gracefully and succeed once connectivity returns.
 - Record until battery drops below 20 % (if possible); ensure recording stops gracefully and WAV files remain valid.
 - Rotate the screen while recording; observe the service continues, chunks remain consistent, and UI state persists.
 - Revoke microphone permission while recording; app surfaces error and stops cleanly.

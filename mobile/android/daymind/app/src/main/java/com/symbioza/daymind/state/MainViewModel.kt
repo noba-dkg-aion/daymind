@@ -1,6 +1,8 @@
 package com.symbioza.daymind.state
 
 import android.app.Application
+import android.content.Intent
+import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.symbioza.daymind.DayMindApplication
@@ -10,15 +12,15 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 data class UiState(
     val isRecording: Boolean = false,
     val pendingChunks: Int = 0,
-    val lastUploadMessage: String = "Waiting",
-    val authError: Boolean = false,
+    val syncMessage: String = "Waiting",
+    val isSyncing: Boolean = false,
     val canPlayChunk: Boolean = false,
-    val isPlayingBack: Boolean = false
+    val isPlayingBack: Boolean = false,
+    val hasArchiveToShare: Boolean = false
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -27,17 +29,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<UiState> = combine(
         container.recordingStateStore.isRecording,
         container.chunkRepository.pendingCount,
-        container.uploadStatusStore.status,
+        container.syncStatusStore.status,
         container.chunkRepository.latestChunkPath,
         container.chunkPlaybackManager.isPlaying
-    ) { recording, pending, uploadStatus, latestChunkPath, isPlaying ->
+    ) { recording, pending, syncStatus, latestChunkPath, isPlaying ->
         UiState(
             isRecording = recording,
             pendingChunks = pending,
-            lastUploadMessage = uploadStatus.message,
-            authError = uploadStatus.authError,
+            syncMessage = syncStatus.message,
+            isSyncing = syncStatus.isSyncing,
             canPlayChunk = !latestChunkPath.isNullOrBlank(),
-            isPlayingBack = isPlaying
+            isPlayingBack = isPlaying,
+            hasArchiveToShare = !syncStatus.latestArchivePath.isNullOrBlank()
         )
     }.stateIn(
         scope = viewModelScope,
@@ -53,14 +56,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun retryUploads() {
-        container.uploadStatusStore.clearAuthError()
-        viewModelScope.launch {
-            container.chunkRepository.refresh()
-            container.chunkUploadScheduler.enqueueAllPending()
-        }
-    }
-
     fun playLatestChunk() {
         val path = container.chunkRepository.latestChunkPath.value ?: return
         container.chunkPlaybackManager.play(File(path))
@@ -68,5 +63,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopPlayback() {
         container.chunkPlaybackManager.stop()
+    }
+
+    fun syncNow() {
+        container.enqueueManualSync()
+    }
+
+    fun shareArchive() {
+        val path = container.syncStatusStore.status.value.latestArchivePath ?: return
+        val file = File(path)
+        if (!file.exists()) return
+        val uri = FileProvider.getUriForFile(
+            getApplication(),
+            "${getApplication<Application>().packageName}.fileprovider",
+            file
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "audio/flac"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        getApplication<Application>().startActivity(
+            Intent.createChooser(intent, "Share DayMind archive")
+        )
     }
 }

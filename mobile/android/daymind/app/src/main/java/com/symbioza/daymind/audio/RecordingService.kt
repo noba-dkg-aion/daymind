@@ -87,7 +87,7 @@ class RecordingService : Service() {
             AudioFormat.ENCODING_PCM_16BIT
         )
         if (minBufferBytes == AudioRecord.ERROR || minBufferBytes == AudioRecord.ERROR_BAD_VALUE) {
-            container.uploadStatusStore.markRetryableError("AudioRecord unavailable")
+            container.syncStatusStore.markError("AudioRecord unavailable")
             stopRecording()
             return@withContext
         }
@@ -110,7 +110,7 @@ class RecordingService : Service() {
                 }
             }
         } catch (e: SecurityException) {
-            container.uploadStatusStore.markRetryableError("Mic permission denied")
+            container.syncStatusStore.markError("Mic permission denied")
         } finally {
             finalizeChunk(currentChunk, keepIfEmpty = false)
             runCatching { audioRecord.stop() }
@@ -162,18 +162,26 @@ class RecordingService : Service() {
             SilenceTrimmer.trim(chunk.file, SAMPLE_RATE)
         }.getOrNull()
         if (trimResult == null) {
-            container.uploadStatusStore.markRetryableError("Trim failed, sending raw chunk")
-            container.chunkUploadScheduler.scheduleChunkUpload(chunk.file, chunk.sessionStart)
+            container.syncStatusStore.markError("Trim failed, discarding chunk")
+            chunk.file.delete()
+            container.chunkRepository.refresh()
             return
         }
         if (trimResult.segments.isEmpty()) {
             chunk.file.delete()
             container.chunkRepository.refresh()
-            container.uploadStatusStore.markSuccess("Silent chunk skipped")
+            container.syncStatusStore.markSuccess("Silent chunk skipped")
             return
         }
-        container.chunkRepository.saveSpeechSegments(chunk.file, trimResult.segments)
-        container.chunkUploadScheduler.scheduleChunkUpload(chunk.file, chunk.sessionStart)
+        val durationMs = (trimResult.keptSamples * 1000L) / SAMPLE_RATE
+        container.chunkRepository.registerChunk(
+            file = chunk.file,
+            sessionStart = chunk.sessionStart,
+            durationMs = durationMs,
+            sampleRate = SAMPLE_RATE,
+            speechSegments = trimResult.segments
+        )
+        container.syncStatusStore.markSuccess("Chunk saved locally")
     }
 
     private fun buildNotification(): Notification {

@@ -27,16 +27,26 @@ Foreground-only Kotlin/Compose app that records mono 16 kHz WAV chunks, queues
    ```
 
 ## Runtime behavior
-- The `Record` toggle starts a foreground `AudioRecord` service (PCM 16‑bit, 16 kHz mono) that writes 6 s WAV chunks into `cacheDir/chunks`, trims trailing/leading silence, and captures speech windows for each clip.
-- Each finalized chunk schedules an `UploadChunkWorker` job with network constraints and exponential backoff.
-- Successful uploads delete the chunk and clear any pause flags. Auth failures (401/403) pause the queue until the operator taps **Retry uploads** and fixes the key.
-- Metadata sent along with the multipart payload: `session_ts`, `device_id`, `sample_rate`, and `format`.
-- Use **Play Last Chunk** to audition the most recent trimmed clip (button becomes **Stop Playback** while audio is playing).
+- The `Record` toggle starts a foreground `AudioRecord` service (PCM 16‑bit, 16 kHz mono) that writes 6 s WAV chunks into `cacheDir/vault/`, trims trailing/leading silence, and captures speech windows for each clip.
+- Chunks remain on-device until you tap **Sync Now**. Manual sync concatenates every pending chunk (in chronological order), encodes the session into FLAC, uploads the archive + manifest, and marks the chunks as uploaded—no background uploads every 6 s.
+- **Play Last Chunk** lets you audition the latest trimmed clip (button becomes **Stop Playback** while audio is playing).
+- **Share Archive** exposes the last FLAC bundle via the Android Share sheet (files are stored under `Android/data/com.symbioza.daymind/files/Music/` for playback in any external app).
+
+### Manual sync & compression
+- Sync builds `archive_<uuid>.flac` + `archive_<uuid>.json`, compressing the concatenated WAV with the Java FLAC encoder (level 8). The JSON manifest lists `{chunk_id, session_start, session_end, speech_segments}` for every trimmed clip.
+- Uploads now target `/v1/transcribe/batch` with two form fields: `archive` (FLAC) and `manifest` (JSON). Backend processing splits the archive using the manifest and keeps UTC speech windows intact.
+- Nothing leaves the device unless you explicitly tap **Sync Now** (or implement a scheduled sync later). You can keep the FLAC locally even after upload.
 
 ### Speech timeline metadata
 - Silence trimming uses a lightweight amplitude detector; sections shorter than ~250 ms or below the threshold are discarded automatically.
-- Every retained chunk writes `chunk_<timestamp>...wav.segments.json`, which lists `{start_ms,end_ms}` pairs describing when speaking occurred.
-- Uploads include the JSON as the optional `speech_segments` part so `/v1/transcribe` and downstream GPT summarization can tell when speech was active vs. idle.
+- Every retained chunk is tracked in `chunks_manifest.json` with relative `{start_ms,end_ms}` pairs describing speech.
+- The FLAC manifest converts those windows into absolute UTC timestamps (`start_utc`/`end_utc`) so `/v1/transcribe/batch` and downstream GPT summarization know exactly when you were talking, even though the uploaded archive is trimmed.
+
+### Manual sync flow
+1. Record as long as you like; pending chunk count grows but nothing leaves the device.
+2. Tap **Sync Now** when you want to upload. The button shows “Syncing…” while the FLAC archive + manifest upload; afterwards the pending counter resets to 0.
+3. Tap **Share Archive** to send the latest FLAC elsewhere (email, Drive, standalone audio app, etc.). Files live under `Android/data/<app id>/files/Music/`.
+4. Archives and manifests remain on-device; delete them manually if storage is tight.
 
 ## Privacy notes
 - Audio chunks stay on-device (cache directory) until they upload over HTTPS.

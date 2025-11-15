@@ -19,9 +19,10 @@ import com.symbioza.daymind.state.UiState
 fun DayMindScreen(
     state: UiState,
     onToggleRecording: () -> Unit,
-    onRetryUploads: () -> Unit,
+    onSync: () -> Unit,
     onPlayLastChunk: () -> Unit,
-    onStopPlayback: () -> Unit
+    onStopPlayback: () -> Unit,
+    onShareArchive: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -51,21 +52,23 @@ fun DayMindScreen(
                 Text(if (state.isPlayingBack) "Stop Playback" else "Play Last Chunk")
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "Pending chunks: ${state.pendingChunks}")
-                Text(text = "Last upload: ${state.lastUploadMessage}")
+            Button(
+                onClick = onSync,
+                enabled = !state.isSyncing && state.pendingChunks > 0
+            ) {
+                Text(if (state.isSyncing) "Syncing..." else "Sync Now")
             }
 
-            if (state.authError) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Uploads paused — invalid API key",
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    Button(onClick = onRetryUploads) {
-                        Text("Retry uploads")
-                    }
-                }
+            Button(
+                onClick = onShareArchive,
+                enabled = state.hasArchiveToShare
+            ) {
+                Text("Share Archive")
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "Pending chunks: ${state.pendingChunks}")
+                Text(text = state.syncMessage)
             }
         }
     }

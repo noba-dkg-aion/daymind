@@ -155,3 +155,24 @@ curl -H "X-API-Key: $API_KEY" \
 curl -H "X-API-Key: $API_KEY" \
      "http://localhost:8000/v1/finance"
 ```
+### `POST /v1/transcribe/batch`
+- **Request:** `multipart/form-data`
+  - `archive`: FLAC file containing multiple concatenated chunks (compressed client-side).
+  - `manifest`: JSON manifest describing each chunk inside the archive:
+    ```json
+    {
+      "archive_id": "uuid",
+      "generated_utc": "2024-07-16T22:05:00Z",
+      "chunk_count": 5,
+      "chunks": [
+        {
+          "chunk_id": "123",
+          "session_start": "2024-07-16T21:58:00Z",
+          "session_end": "2024-07-16T21:58:06Z",
+          "speech_segments": [{"start_utc":"2024-07-16T21:58:00Z","end_utc":"2024-07-16T21:58:01.4Z"}]
+        }
+      ]
+    }
+    ```
+- **Response:** same payload as `/v1/transcribe`, but aggregated (array of transcript entries or `{"status":"queued"}` depending on downstream processing).
+- **Notes:** Backend should split the FLAC via the manifest offsets, preserving UTC speech windows so GPT summarization knows when speech happened inside the day-long session.
