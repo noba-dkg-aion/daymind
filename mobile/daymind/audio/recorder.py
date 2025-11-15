@@ -13,6 +13,7 @@ import soundfile as sf
 
 from ..config import CONFIG
 from ..services.logger import LogBuffer
+from .noise_filter import NoiseReducer
 from .speech_segmenter import SpeechSegmenter
 from .types import RecordedChunk
 
@@ -44,6 +45,7 @@ class AudioRecorder:
             vad_aggressiveness=vad_aggressiveness,
         )
         self.noise_gate = max(0.0, min(float(noise_gate), 1.0))
+        self.noise_reducer = NoiseReducer(self.sample_rate)
         self.level_callback = level_callback
 
     def _try_import_sounddevice(self):
@@ -82,6 +84,7 @@ class AudioRecorder:
         pcm = self._capture_audio(frames)
         if pcm is None:
             return None
+        pcm = self.noise_reducer.apply(pcm)
         if not self._passes_noise_gate(pcm):
             self.logger.add("Ambient noise below gate; chunk skipped")
             return None
