@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-class ChunkRepository(context: Context) {
+class ChunkRepository(private val context: Context) {
     private val chunksDir: File = File(context.cacheDir, "vault").apply { mkdirs() }
     private val externalDir: File = run {
         ContextCompat.getExternalFilesDirs(context, Environment.DIRECTORY_MUSIC)
@@ -45,18 +45,21 @@ class ChunkRepository(context: Context) {
         return chunkFile
     }
 
+    private val externalStore = ExternalChunkStore(context)
+
     fun registerChunk(
         file: File,
-        externalPath: String,
+        externalPath: String?,
         sessionStart: Instant,
         durationMs: Long,
         sampleRate: Int,
         speechSegments: List<SpeechSegment>
     ) {
+        val publicPath = externalPath ?: externalStore.save(file, sessionStart.toEpochMilli())
         val data = ChunkMetadata(
             id = UUID.randomUUID().toString(),
             filePath = file.absolutePath,
-            externalPath = externalPath,
+            externalPath = publicPath ?: file.absolutePath,
             sessionStartUtc = sessionStart.toString(),
             createdAt = System.currentTimeMillis(),
             durationMs = durationMs,
@@ -91,12 +94,6 @@ class ChunkRepository(context: Context) {
     }
 
     fun archiveDirectory(): File = File(chunksDir, "archives").apply { mkdirs() }
-
-    fun mirrorToExternal(source: File): File {
-        val dest = File(externalDir, source.name)
-        source.copyTo(dest, overwrite = true)
-        return dest
-    }
 
     private fun persistManifest() {
         val json = JSONArray()

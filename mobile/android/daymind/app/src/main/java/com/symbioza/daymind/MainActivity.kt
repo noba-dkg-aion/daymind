@@ -1,6 +1,7 @@
 package com.symbioza.daymind
 
 import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -28,6 +29,9 @@ class MainActivity : ComponentActivity() {
                     viewModel.toggleRecording()
                 }
             }
+            val storagePermissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission()
+            ) {}
 
             DayMindTheme {
                 DayMindScreen(
@@ -37,10 +41,19 @@ class MainActivity : ComponentActivity() {
                             this@MainActivity,
                             Manifest.permission.RECORD_AUDIO
                         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                        if (granted) {
-                            viewModel.toggleRecording()
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        val storageGranted = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                            ContextCompat.checkSelfPermission(
+                                this@MainActivity,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE
+                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                        } else true
+
+                        when {
+                            !granted -> permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            !storageGranted -> storagePermissionLauncher.launch(
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE
+                            )
+                            else -> viewModel.toggleRecording()
                         }
                     },
                     onSync = viewModel::syncNow,
