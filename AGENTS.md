@@ -92,7 +92,7 @@
 - EPIC-6 finance track live: JSONL→Beancount exporter + Fava `/finance` bridge with `/v1/finance` aggregates.
 - EPIC-11 services hardened: systemd units, CI deploy job, TLS-aware health checks, and Text-First compliance gates.
 - EPIC-12 kickoff: Auth/billing service, security hardening, landing site, and onboarding docs tracked for commercial readiness.
-- EPIC-13 CI gates: GitHub Actions `terraform_apply → deploy_app → verify_services` pipeline provisions infra, pushes `/opt/daymind` via `scripts/remote_deploy.sh`, and enforces Redis/API/Fava + `/healthz`/`/metrics` checks on every run.
+- EPIC-13 CI gates: GitHub Actions `terraform_apply → deploy_app → verify_services` pipeline provisions infra, pushes `/opt/daymind` via `scripts/remote_deploy.sh`, and enforces Redis/API/Fava + `/healthz`/`/metrics` checks on every run. Kotlin unit tests now synthesize TTS-like audio + noise to exercise the voice detection pipeline automatically.
 - Kotlin Compose client reached feature parity on summary/snackbar/transcript UX: `/v1/summary` fetch + Markdown card, snackbar host piping recorder/upload/share events, and transcript dialog previews with SRT timelines.
 - Advanced voice isolation landed on Android: adaptive multi-band VAD + RNNoise-inspired denoiser + harmonic classifier gate recordings before chunking so background noise rarely survives.
 
